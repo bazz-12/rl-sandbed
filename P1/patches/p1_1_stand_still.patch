@@ -1,0 +1,304 @@
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -6,6 +6,12 @@
+ import genesis as gs
+ from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
+ 
++from go2_commands import apply_command_deadzone  # [P1.1]
++
++# [P1.1] Foot links of the Go2 URDF. They are fixed to the calves, so Genesis merges them into the calf
++# links unless they are listed in `links_to_keep`; kept separate, their contact force can be read.
++FOOT_LINKS = ("FL_foot", "FR_foot", "RL_foot", "RR_foot")
++
+ 
+ def gs_rand(lower, upper, batch_shape):
+     assert lower.shape == upper.shape
+@@ -63,12 +69,16 @@
+             )
+         )
+ 
++        # [P1.1] always keep the foot links (contacts for the air-time reward), plus any extra link requested
++        self.foot_links = tuple(self.env_cfg.get("foot_links", FOOT_LINKS))
++        links_to_keep = tuple(dict.fromkeys((*self.foot_links, *self.env_cfg.get("links_to_keep", ()))))
++
+         self.robot = self.scene.add_entity(
+             gs.morphs.URDF(
+                 file="urdf/go2/urdf/go2.urdf",
+                 pos=self.env_cfg["base_init_pos"],
+                 quat=self.env_cfg["base_init_quat"],
+-		links_to_keep=self.env_cfg.get("links_to_keep", ()),   # <-- add this line
++                links_to_keep=links_to_keep,
+             ),
+         )
+ 
+@@ -81,6 +91,10 @@
+             device=gs.device,
+         )
+         self.actions_dof_idx = torch.argsort(self.motors_dof_idx)
++        # [P1.1] foot link indices (local to the robot), same order as self.foot_links
++        self.feet_link_idx = torch.tensor(
++            [self.robot.get_link(name).idx_local for name in self.foot_links], dtype=gs.tc_int, device=gs.device
++        )
+ 
+         # PD control parameters
+         self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motors_dof_idx)
+@@ -135,6 +149,14 @@
+             dtype=gs.tc_float,
+             device=gs.device,
+         )
++        # [P1.1] foot contact state (legged_gym _reward_feet_air_time) and the zero-command flag
++        n_feet = len(self.foot_links)
++        self.last_feet_contact = torch.zeros((self.num_envs, n_feet), dtype=gs.tc_bool, device=gs.device)
++        self.feet_contact = torch.zeros_like(self.last_feet_contact)  # filtered contact
++        self.feet_first_contact = torch.zeros_like(self.last_feet_contact)  # touchdown at this step
++        self.feet_air_time = torch.zeros((self.num_envs, n_feet), dtype=gs.tc_float, device=gs.device)
++        self.feet_air_time_at_touchdown = torch.zeros_like(self.feet_air_time)
++        self.zero_cmd = torch.zeros((self.num_envs,), dtype=gs.tc_bool, device=gs.device)
+         self.extras = dict()  # extra information for logging
+ 
+         # prepare reward functions and multiply reward scales by dt
+@@ -148,6 +170,16 @@
+ 
+     def _resample_commands(self, envs_idx):
+         commands = gs_rand(*self.commands_limits, (self.num_envs,))
++        # [P1.1] Zero small commands (legged_gym _resample_commands), with the same rule as at deployment
++        # (go2_commands.py), so that "stop" is an exact command the policy sees often.
++        commands = apply_command_deadzone(
++            commands, self.command_cfg.get("lin_deadzone", 0.0), self.command_cfg.get("ang_deadzone", 0.0)
++        )
++        # [P1.1] A share of the envs gets an exact zero command (Isaac Lab rel_standing_envs).
++        standing = torch.rand((self.num_envs,), dtype=gs.tc_float, device=gs.device) < self.command_cfg.get(
++            "rel_standing_envs", 0.0
++        )
++        commands.masked_fill_(standing[:, None], 0.0)
+         if envs_idx is None:
+             self.commands.copy_(commands)
+         else:
+@@ -173,6 +205,9 @@
+         self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat)
+         self.dof_pos = self.robot.get_dofs_position(self.motors_dof_idx)
+         self.dof_vel = self.robot.get_dofs_velocity(self.motors_dof_idx)
++        self._update_feet_contacts()  # [P1.1]
++        # [P1.1] "zero command" = all three components zero (the deadzone makes it exact)
++        self.zero_cmd = torch.linalg.norm(self.commands, dim=1) < 0.1
+ 
+         # compute reward
+         self.rew_buf.zero_()
+@@ -203,6 +238,19 @@
+ 
+         return self.get_observations(), self.rew_buf, self.reset_buf, self.extras
+ 
++    def _update_feet_contacts(self):
++        # [P1.1] Foot contact and air time, as in legged_gym _reward_feet_air_time: a foot is in contact when its
++        # contact force exceeds a threshold; the contact is OR-ed with the previous step to filter flicker.
++        force = self.robot.get_links_net_contact_force()[:, self.feet_link_idx]  # [N, 4, 3]
++        contact = torch.linalg.norm(force, dim=-1) > self.reward_cfg.get("contact_force_threshold", 1.0)
++        contact_filt = contact | self.last_feet_contact
++        self.last_feet_contact.copy_(contact)
++        self.feet_first_contact = (self.feet_air_time > 0.0) & contact_filt
++        self.feet_air_time += self.dt
++        self.feet_air_time_at_touchdown = self.feet_air_time * self.feet_first_contact
++        self.feet_air_time.masked_fill_(contact_filt, 0.0)
++        self.feet_contact = contact_filt
++
+     def get_observations(self):
+         return TensorDict({"policy": self.obs_buf}, batch_size=[self.num_envs])
+ 
+@@ -222,6 +270,8 @@
+             self.actions.zero_()
+             self.last_actions.zero_()
+             self.last_dof_vel.zero_()
++            self.feet_air_time.zero_()  # [P1.1]
++            self.last_feet_contact.zero_()  # [P1.1]
+             self.episode_length_buf.zero_()
+             self.reset_buf.fill_(True)
+         else:
+@@ -237,6 +287,8 @@
+             self.actions.masked_fill_(envs_idx[:, None], 0.0)
+             self.last_actions.masked_fill_(envs_idx[:, None], 0.0)
+             self.last_dof_vel.masked_fill_(envs_idx[:, None], 0.0)
++            self.feet_air_time.masked_fill_(envs_idx[:, None], 0.0)  # [P1.1]
++            self.last_feet_contact.masked_fill_(envs_idx[:, None], False)  # [P1.1]
+             self.episode_length_buf.masked_fill_(envs_idx, 0)
+             self.reset_buf.masked_fill_(envs_idx, True)
+ 
+@@ -296,8 +348,24 @@
+ 
+     def _reward_similar_to_default(self):
+         # Penalize joint poses far away from default pose
+-        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
++        deviation = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
++        # [P1.1] x stand_still_scale at zero command while the base is (nearly) at rest (Isaac Lab Spot
++        # joint_position_penalty). The speed gate keeps the normal weight while the base moves (e.g. after a
++        # push), so the robot may still step to recover.
++        base_speed = torch.linalg.norm(self.base_lin_vel[:, :2], dim=1)
++        at_rest = base_speed < self.reward_cfg.get("stand_still_vel_threshold", 0.5)
++        scale = self.reward_cfg.get("stand_still_scale", 1.0)
++        return torch.where(self.zero_cmd & at_rest, scale * deviation, deviation)
+ 
+     def _reward_base_height(self):
+         # Penalize base height away from target
+         return torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
++
++    def _reward_feet_air_time(self):
++        # [P1.1] legged_gym: on each touchdown, reward (air time - target), i.e. long steps; this also stops the
++        # feet from shuffling. Paid only for a non-zero command, otherwise it would reward stepping in place.
++        # (legged_gym gates on |cmd_xy| > 0.1; the yaw command counts here too, so turning in place is stepped.)
++        rew = torch.sum(
++            (self.feet_air_time_at_touchdown - self.reward_cfg["feet_air_time_target"]) * self.feet_first_contact, dim=1
++        )
++        return rew * ~self.zero_cmd
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -17,7 +17,8 @@
+ 
+ import genesis as gs
+ 
+-from go2_env import Go2Env
++from go2_env import Go2Env, FOOT_LINKS
++from go2_commands import LIN_DEADZONE, ANG_DEADZONE  # [P1.1] same deadzone as at deployment
+ 
+ import subprocess, json, sys, torch
+ from importlib.metadata import version
+@@ -127,6 +128,8 @@
+         "action_scale": 0.25,
+         "simulate_action_latency": True,
+         "clip_actions": 100.0,
++        # [P1.1] foot links kept separate from the calves (contact forces for the air-time reward)
++        "foot_links": list(FOOT_LINKS),
+     }
+     obs_cfg = {
+         "obs_scales": {
+@@ -140,20 +143,33 @@
+         "tracking_sigma": 0.25,
+         "base_height_target": 0.3,
+         "feet_height_target": 0.075,
++        # [P1.1] feet air time (legged_gym): contact threshold [N] and target air time [s]
++        "contact_force_threshold": 1.0,
++        "feet_air_time_target": 0.5,
++        # [P1.1] at zero command and base speed < threshold, similar_to_default is multiplied by stand_still_scale
++        # (Isaac Lab Spot: stand_still_scale 5.0, velocity_threshold 0.5 m/s)
++        "stand_still_scale": 5.0,
++        "stand_still_vel_threshold": 0.5,
+         "reward_scales": {
+             "tracking_lin_vel": 1.0,
+-            "tracking_ang_vel": 0.2,
++            "tracking_ang_vel": 0.5,  # [P1.1] 0.2 -> 0.5 (legged_gym): yaw commands are now non-zero
+             "lin_vel_z": -1.0,
+             "base_height": -50.0,
+             "action_rate": -0.005,
+             "similar_to_default": -0.1,
++            "feet_air_time": 1.0,  # [P1.1] legged_gym default, gated off at zero command
+         },
+     }
+     command_cfg = {
+         "num_commands": 3,
+-        "lin_vel_x_range": [0.5, 0.5],
+-        "lin_vel_y_range": [0, 0],
+-        "ang_vel_range": [0, 0],
++        # [P1.1] a real command space (was a single command, vx = 0.5); covers the go2_metrics.py grid
++        "lin_vel_x_range": [-1.0, 1.0],
++        "lin_vel_y_range": [-0.5, 0.5],
++        "ang_vel_range": [-1.0, 1.0],
++        # [P1.1] zero small commands (legged_gym) + exact-zero envs (Isaac Lab rel_standing_envs; Spot uses 0.1)
++        "lin_deadzone": LIN_DEADZONE,
++        "ang_deadzone": ANG_DEADZONE,
++        "rel_standing_envs": 0.1,
+     }
+ 
+     return env_cfg, obs_cfg, reward_cfg, command_cfg
+@@ -165,8 +181,10 @@
+         "-e", "--exp-name", type=str, default="go2-walking", help="Experiment name; also the log directory under logs/"
+     )
+     parser.add_argument("-b", "--num-envs", type=int, default=4096, help="Number of parallel environments")
+-    parser.add_argument("--max-iterations", type=int, default=101, help="Number of learning iterations")
++    # [P1.1] 101 iterations were enough for one fixed command; a 3-D command space with standing needs ~10x more
++    parser.add_argument("--max-iterations", type=int, default=1000, help="Number of learning iterations")
+     parser.add_argument("--seed", type=int, default=1, help="Random seed")
++    parser.add_argument("--cpu", action="store_true", help="CPU backend, for quick smoke tests only")
+     args = parser.parse_args()
+ 
+     log_dir = f"logs/{args.exp_name}"
+@@ -179,9 +197,15 @@
+ 
+     with open(f"{log_dir}/cfgs.pkl", "wb") as f:
+         pickle.dump([env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg], f)
++    # run_manifest() was defined but never called; best effort, so a missing git repo never blocks training
++    try:
++        run_manifest(log_dir, [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg])
++    except Exception as e:  # noqa: BLE001
++        print(f"manifest not written: {e}")
+ 
+     # Training throughput comes from the 4096 parallel environments, which need a GPU.
+-    gs.init(backend=gs.gpu, precision="32", logging_level="warning", seed=args.seed, performance_mode=True)
++    gs.init(backend=gs.cpu if args.cpu else gs.gpu, precision="32", logging_level="warning", seed=args.seed,
++            performance_mode=True)
+ 
+     env = Go2Env(
+         num_envs=args.num_envs, env_cfg=env_cfg, obs_cfg=obs_cfg, reward_cfg=reward_cfg, command_cfg=command_cfg
+--- a/go2_eval.py
++++ b/go2_eval.py
+@@ -23,6 +23,8 @@
+         "-e", "--exp-name", type=str, default="go2-walking", help="Experiment name; also the log directory under logs/"
+     )
+     parser.add_argument("--ckpt", type=int, default=100, help="Checkpoint iteration to load")
++    # [P1.1] pin the command, e.g. --cmd 0 0 0 to check standing still (default: random commands as in training)
++    parser.add_argument("--cmd", type=float, nargs=3, metavar=("VX", "VY", "WZ"), default=None)
+     args = parser.parse_args()
+ 
+     gs.init(backend=gs.cpu)
+@@ -31,6 +33,10 @@
+     with open(f"logs/{args.exp_name}/cfgs.pkl", "rb") as f:
+         env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
+     reward_cfg["reward_scales"] = {}
++    if args.cmd is not None:  # [P1.1] a [v, v] range pins the command; the training deadzone still applies
++        for key, v in zip(("lin_vel_x_range", "lin_vel_y_range", "ang_vel_range"), args.cmd):
++            command_cfg[key] = [v, v]
++        command_cfg["rel_standing_envs"] = 0.0
+ 
+     env = Go2Env(
+         num_envs=1,
+--- /dev/null
++++ b/go2_commands.py
+@@ -0,0 +1,41 @@
++"""
++go2_commands.py - velocity-command conventions shared by training and deployment.
++
++[P1.1] The same zeroing rule is applied when commands are sampled in training (go2_env.py) and when gamepad
++sticks are turned into commands on the robot, so the deployed policy never receives a command it has not seen.
++No Genesis import: copy this file to the deployment PC as is. Works on torch tensors and numpy arrays.
++"""
++
++LIN_DEADZONE = 0.2   # [m/s]   |(vx, vy)| below this -> (0, 0)  (legged_gym _resample_commands uses 0.2)
++ANG_DEADZONE = 0.2   # [rad/s] |wz| below this -> 0
++
++
++def apply_command_deadzone(cmd, lin_deadzone=LIN_DEADZONE, ang_deadzone=ANG_DEADZONE):
++    """Zero small commands. cmd: [..., 3] = (vx, vy, wz). Returns a new array/tensor of the same type."""
++    out = cmd * 1.0                                             # copy, works for torch and numpy
++    small_lin = (out[..., 0] ** 2 + out[..., 1] ** 2) < lin_deadzone ** 2
++    small_ang = abs(out[..., 2]) < ang_deadzone
++    out[..., 0] = out[..., 0] * ~small_lin
++    out[..., 1] = out[..., 1] * ~small_lin
++    out[..., 2] = out[..., 2] * ~small_ang
++    return out
++
++
++def sticks_to_command(forward, left, turn_left, max_cmd=(1.0, 0.5, 1.0), stick_deadzone=0.1,
++                      lin_deadzone=LIN_DEADZONE, ang_deadzone=ANG_DEADZONE):
++    """Gamepad sticks in [-1, 1] -> (vx, vy, wz) command.
++
++    Map your gamepad axes so that pushing forward / left / turn-left gives +1 (check the sign convention of
++    your gamepad driver). max_cmd should match the training command ranges.
++    1) stick deadzone, rescaled so the command is continuous past it (removes stick drift),
++    2) scaling to the command ranges,
++    3) the training deadzone, so tiny commands become an exact zero (= stand still).
++    """
++    def stick(s):
++        s = max(-1.0, min(1.0, float(s)))
++        mag = max(abs(s) - stick_deadzone, 0.0) / (1.0 - stick_deadzone)
++        return mag if s >= 0 else -mag
++
++    cmd = [stick(forward) * max_cmd[0], stick(left) * max_cmd[1], stick(turn_left) * max_cmd[2]]
++    import numpy as np
++    return apply_command_deadzone(np.asarray(cmd, dtype=np.float32), lin_deadzone, ang_deadzone)

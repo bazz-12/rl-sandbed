@@ -1,0 +1,984 @@
+--- /dev/null
++++ b/go2_deploy_sdk2.py
+@@ -0,0 +1,173 @@
++"""
++go2_deploy_sdk2.py - [P1.5] Run the state machine (go2_fsm.py) on the Go2, or in unitree_mujoco, through
++unitree_sdk2_python's low-level interface.
++
++!!! NOT TESTED ON HARDWARE. Written from Unitree's example/go2/low_level/go2_stand_example.py and checked only
++!!! through the Genesis bench (go2_fsm_sim.py), which exercises go2_fsm.py but not this file.
++!!! Go step by step: 1) unitree_mujoco, 2) robot hung on a stand, feet clear of the ground, 3) on the ground.
++
++    python go2_deploy_sdk2.py --policy logs/go2-p15/exported --net enp3s0   # robot: interface wired to the Go2
++    python go2_deploy_sdk2.py --policy logs/go2-p15/exported --sim          # unitree_mujoco (domain 1, "lo")
++
++What it does
++- On the robot, it first releases Unitree's sport mode (MotionSwitcherClient, as go2_stand_example.py does), so
++  the onboard controller stops sending its own commands. The robot lies down first (StandDown).
++- Every 2 ms it reads rt/lowstate (joints, IMU, gamepad), calls Go2StateMachine.update() and writes rt/lowcmd.
++- It starts in damping. Gamepad: L1+R2 stand up, L1+A policy, L1+R1 sit down, L1+Y damping (software e-stop).
++- Damping if no new robot state arrived for 50 ms, and for 1 s on Ctrl+C before exiting.
++"""
++
++import argparse
++import signal
++import struct
++import threading
++import time
++
++import numpy as np
++
++from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
++from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelPublisher, ChannelSubscriber
++from unitree_sdk2py.go2.sport.sport_client import SportClient
++from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
++from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowCmd_, LowState_
++from unitree_sdk2py.utils.crc import CRC
++from unitree_sdk2py.utils.thread import RecurrentThread
++
++from go2_fsm import FsmConfig, Go2StateMachine, Mode, Policy
++
++# Motor index of each joint in rt/lowcmd and rt/lowstate (unitree_legged_const.py LegID: FR_0 = 0 ... RL_2 = 11)
++SDK_JOINTS = ["FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
++              "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint", "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint"]
++POS_STOP_F, VEL_STOP_F = 2.146e9, 16000.0  # unitree_legged_const.py: "no position / velocity target"
++KEY_BITS = ["R1", "L1", "start", "select", "R2", "L2", "F1", "F2", "A", "B", "X", "Y", "up", "right", "down", "left"]
++CONTROL_DT = 0.002  # [s] as go2_stand_example.py
++STATE_TIMEOUT_S = 0.05
++
++
++def parse_remote(data):
++    """wireless_remote (40 bytes) -> (pressed buttons, (lx, ly, rx, ry)). Layout as unitree_rl_gym
++    deploy_real/common/remote_controller.py: key bits in the uint16 at bytes 2-3, then floats lx (4-7), rx (8-11),
++    ry (12-15), ly (20-23)."""
++    raw = bytes(data)
++    keys = struct.unpack("<H", raw[2:4])[0]
++    buttons = {name for i, name in enumerate(KEY_BITS) if keys >> i & 1}
++    lx, rx, ry = struct.unpack("<3f", raw[4:16])
++    (ly,) = struct.unpack("<f", raw[20:24])
++    return buttons, (lx, ly, rx, ry)
++
++
++def release_sport_mode():
++    """go2_stand_example.py: lie down with the sport controller, then release it."""
++    sc = SportClient()
++    sc.SetTimeout(5.0)
++    sc.Init()
++    msc = MotionSwitcherClient()
++    msc.SetTimeout(5.0)
++    msc.Init()
++    status, result = msc.CheckMode()
++    while result["name"]:
++        sc.StandDown()
++        msc.ReleaseMode()
++        status, result = msc.CheckMode()
++        time.sleep(1)
++
++
++class Go2Deploy:
++    def __init__(self, fsm: Go2StateMachine, sdk_idx):
++        self.fsm, self.sdk_idx = fsm, sdk_idx  # sdk_idx[i]: motor index of policy joint i
++        self.crc = CRC()
++        self.cmd = unitree_go_msg_dds__LowCmd_()
++        self.cmd.head[0], self.cmd.head[1] = 0xFE, 0xEF
++        self.cmd.level_flag = 0xFF
++        self.cmd.gpio = 0
++        for m in self.cmd.motor_cmd:  # 20 slots, as InitLowCmd(): servo mode, no target, no gains
++            m.mode, m.q, m.dq, m.kp, m.kd, m.tau = 0x01, POS_STOP_F, VEL_STOP_F, 0.0, 0.0, 0.0
++        self.lock = threading.Lock()
++        self.state, self.state_time = None, 0.0
++        self.t0 = time.monotonic()
++        self.stop_requested = False
++        self.error = False
++        self.publisher = ChannelPublisher("rt/lowcmd", LowCmd_)
++        self.publisher.Init()
++        self.subscriber = ChannelSubscriber("rt/lowstate", LowState_)
++        self.subscriber.Init(self.on_state, 10)
++
++    def on_state(self, msg: LowState_):
++        with self.lock:
++            self.state, self.state_time = msg, time.monotonic()
++
++    def step(self):
++        now = time.monotonic()
++        with self.lock:
++            s, age = self.state, now - self.state_time
++        if s is None:  # no command before the first robot state
++            return
++        t = now - self.t0
++        q = np.array([s.motor_state[j].q for j in self.sdk_idx], dtype=float)
++        dq = np.array([s.motor_state[j].dq for j in self.sdk_idx], dtype=float)
++        gyro = np.array(s.imu_state.gyroscope, dtype=float)  # base frame [rad/s]
++        quat = np.array(s.imu_state.quaternion, dtype=float)  # (w, x, y, z)
++        buttons, sticks = parse_remote(s.wireless_remote)
++        try:
++            if age > STATE_TIMEOUT_S:
++                self.fsm.emergency_damping(t, f"no robot state for {1000 * age:.0f} ms")
++            if self.stop_requested:
++                self.fsm.emergency_damping(t, "Ctrl+C")
++            q_des, dq_des, kp, kd, tau = self.fsm.update(t, q, dq, gyro, quat, buttons, sticks)
++        except Exception as e:  # never leave the motors without a command: damping
++            if not self.error:
++                print(f"error in the state machine, damping: {e!r}")
++            self.error = True
++            zeros = np.zeros_like(q)
++            q_des, dq_des, kp, kd, tau = q, zeros, zeros, np.full_like(q, self.fsm.cfg.passive_kd), zeros
++        for i, j in enumerate(self.sdk_idx):
++            m = self.cmd.motor_cmd[j]
++            m.q, m.dq, m.kp, m.kd, m.tau = float(q_des[i]), float(dq_des[i]), float(kp[i]), float(kd[i]), float(tau[i])
++        self.cmd.crc = self.crc.Crc(self.cmd)
++        self.publisher.Write(self.cmd)
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument("--policy", required=True, help="folder written by go2_export.py (policy.pt, deploy_cfg.json)")
++    p.add_argument("--net", type=str, default=None, help="network interface wired to the robot, e.g. enp3s0")
++    p.add_argument("--domain", type=int, default=0, help="DDS domain id (robot 0, unitree_mujoco 1)")
++    p.add_argument("--sim", action="store_true", help="unitree_mujoco: domain 1, interface lo, no sport mode")
++    args = p.parse_args()
++    if args.sim:
++        args.domain, args.net = 1, args.net or "lo"
++
++    policy = Policy(args.policy)
++    sdk_idx = [SDK_JOINTS.index(name) for name in policy.cfg["joint_names"]]
++    fsm = Go2StateMachine(policy, FsmConfig())
++
++    print("WARNING: low-level control. Robot hung on a stand for the first run, clear area, finger on L1+Y.")
++    input("Press Enter to continue...")
++    if args.net:
++        ChannelFactoryInitialize(args.domain, args.net)
++    else:
++        ChannelFactoryInitialize(args.domain)
++    if not args.sim:
++        release_sport_mode()
++
++    node = Go2Deploy(fsm, sdk_idx)
++    thread = RecurrentThread(interval=CONTROL_DT, target=node.step, name="go2_fsm")
++    thread.Start()
++    print("Running in damping mode. L1+R2 stand up | L1+A policy | L1+R1 sit down | L1+Y damping | Ctrl+C quit")
++    try:
++        while True:
++            time.sleep(1.0)
++            if node.state is None:
++                print("waiting for rt/lowstate ...")
++            elif fsm.mode is Mode.POLICY:
++                print(f"policy | command vx {fsm.command[0]:+.2f} vy {fsm.command[1]:+.2f} wz {fsm.command[2]:+.2f}")
++    except KeyboardInterrupt:
++        signal.signal(signal.SIGINT, signal.SIG_IGN)  # a second Ctrl+C must not cut the damping phase short
++        node.stop_requested = True
++        time.sleep(1.0)  # keep sending damping for 1 s
++        thread.Wait(0.1)
++        print("stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)")
++
++
++if __name__ == "__main__":
++    main()
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -60,6 +60,7 @@
+     """
+     env_cfg["domain_rand"] = {}
+     obs_cfg["add_noise"] = False
++    env_cfg["recovery"] = {}  # [P1.5] no fallen starts
+     if latency_s is not None:
+         env_cfg["latency_s"] = latency_s
+ 
+@@ -250,6 +251,13 @@
+         self.feet_air_time = torch.zeros((self.num_envs, n_feet), dtype=gs.tc_float, device=gs.device)
+         self.feet_air_time_at_touchdown = torch.zeros_like(self.feet_air_time)
+         self.zero_cmd = torch.zeros((self.num_envs,), dtype=gs.tc_bool, device=gs.device)
++        # [P1.5] learned recovery (optional, off unless env_cfg["recovery"]["init_prob"] > 0): a share of the
++        # episodes starts from a random fallen pose (MetalHead recovery_init_prob), with zero command and without
++        # the tilt and base-contact terminations for the whole episode.
++        recovery = self.env_cfg.get("recovery") or {}
++        self.recovery_init_prob = recovery.get("init_prob", 0.0)
++        self.recovery_spawn_height = recovery.get("spawn_height", 0.5)  # [m] base height of the fallen start
++        self.recovering = torch.zeros((self.num_envs,), dtype=gs.tc_bool, device=gs.device)
+         # [P1.3] |net contact force| per robot link, updated in step()
+         self.link_contact_force = torch.zeros((self.num_envs, self.robot.n_links), dtype=gs.tc_float, device=gs.device)
+ 
+@@ -320,6 +328,32 @@
+             com = self.robot.get_links_COM([self.base_link_idx])  # [N, 1, 3]
+             self.robot.set_links_COM(com + self.com_shift[:, None, :], [self.base_link_idx])
+ 
++    def _fallen_starts(self, envs_idx):
++        # [P1.5] A share recovery_init_prob of the reset envs restarts from a random fallen state, dropped from
++        # spawn_height: uniformly random base orientation (MetalHead samples random Euler angles) and joint angles
++        # uniform within the soft limits. The flag stays for the whole episode.
++        N = self.num_envs
++        reset = torch.ones((N,), dtype=gs.tc_bool, device=gs.device) if envs_idx is None else envs_idx
++        fallen = reset & (torch.rand((N,), device=gs.device) < self.recovery_init_prob)
++        self.recovering = torch.where(reset, fallen, self.recovering)
++
++        quat = torch.randn((N, 4), dtype=gs.tc_float, device=gs.device)
++        quat = quat / torch.linalg.norm(quat, dim=1, keepdim=True)  # uniform random rotation (w, x, y, z)
++        lower, upper = self.dof_pos_soft_limits
++        q = lower + (upper - lower) * torch.rand((N, self.num_actions), dtype=gs.tc_float, device=gs.device)
++        qpos = self.init_qpos.repeat(N, 1)
++        qpos[:, 2] = self.recovery_spawn_height
++        qpos[:, 3:7] = quat
++        qpos[:, self.motors_dof_idx + 1] = q  # qpos = [pos 3, quat 4, joints]: dof d is qpos entry d + 1
++        # full [N, 19] tensor + boolean mask: written with torch.where (Genesis zero-copy, default on CPU and CUDA)
++        self.robot.set_qpos(qpos, envs_idx=fallen, zero_velocity=True, skip_forward=True)
++
++        torch.where(fallen[:, None], qpos[:, :3], self.base_pos, out=self.base_pos)
++        torch.where(fallen[:, None], quat, self.base_quat, out=self.base_quat)
++        gravity = transform_by_quat(self.global_gravity, inv_quat(quat))
++        torch.where(fallen[:, None], gravity, self.projected_gravity, out=self.projected_gravity)
++        torch.where(fallen[:, None], q, self.dof_pos, out=self.dof_pos)
++
+     def _resample_actuation(self, envs_idx):
+         # [P1.2] Per-episode actuator randomization: Kp, Kd (per env), motor strength (per env and joint),
+         # action latency (per env, in physics steps). Drawn for all envs, applied to the ones being reset.
+@@ -360,6 +394,8 @@
+             "rel_standing_envs", 0.0
+         )
+         commands.masked_fill_(standing[:, None], 0.0)
++        if self.recovery_init_prob > 0:  # [P1.5] recovery episodes: get up and stand still
++            commands.masked_fill_(self.recovering[:, None], 0.0)
+         if envs_idx is None:
+             self.commands.copy_(commands)
+         else:
+@@ -415,20 +451,22 @@
+             self.episode_sums[name] += rew
+         # [P1.3] legged_gym only_positive_rewards: with many penalties and contact termination, a negative total
+         # would make ending the episode early attractive; clipping at 0 removes that incentive
++        # [P1.5] ... except in recovery episodes, which cannot end early: their penalties must stay informative
+         if self.reward_cfg.get("only_positive_rewards", False):
+-            self.rew_buf.clip_(min=0.0)
++            self.rew_buf = torch.where(self.recovering, self.rew_buf, self.rew_buf.clip(min=0.0))
+ 
+         self._resample_commands(self.episode_length_buf % int(self.env_cfg["resampling_time_s"] / self.dt) == 0)
+ 
+         # check termination and reset
+         self.reset_buf = self.episode_length_buf > self.max_episode_length
+-        self.reset_buf |= torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
+-        self.reset_buf |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
+-        self.reset_buf |= self.scene.rigid_solver.get_error_envs_mask()
++        fallen = torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
++        fallen |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
+         # [P1.3] base contact termination (legged_gym check_termination: |F| > 1 N on terminate_after_contacts_on)
+         if len(self.termination_contact_link_idx) > 0:
+             contact_force = self.link_contact_force[:, self.termination_contact_link_idx]
+-            self.reset_buf |= torch.any(contact_force > self.reward_cfg.get("termination_contact_force", 1.0), dim=1)
++            fallen |= torch.any(contact_force > self.reward_cfg.get("termination_contact_force", 1.0), dim=1)
++        self.reset_buf |= fallen & ~self.recovering  # [P1.5] recovery episodes are not ended by a fall
++        self.reset_buf |= self.scene.rigid_solver.get_error_envs_mask()
+ 
+         # Compute timeout
+         self.extras["time_outs"] = (self.episode_length_buf > self.max_episode_length).to(dtype=gs.tc_float)
+@@ -462,6 +500,12 @@
+         return TensorDict({"policy": self.obs_buf}, batch_size=[self.num_envs])
+ 
+     def _reset_idx(self, envs_idx=None):
++        if self.recovery_init_prob > 0:  # [P1.5] success of the recovery episodes that end here (logged below)
++            ended = self.recovering if envs_idx is None else self.recovering & envs_idx
++            upright = (self.projected_gravity[:, 2] < -0.9) & (self.base_pos[:, 2] > 0.2)
++            n_ended = ended.sum()
++            recovery_success = torch.where(n_ended > 0, (ended & upright).sum() / n_ended.clamp(min=1), 0.0)
++
+         # reset state
+         self.robot.set_qpos(self.init_qpos, envs_idx=envs_idx, zero_velocity=True, skip_forward=True)
+ 
+@@ -502,10 +546,14 @@
+             self.reset_buf.masked_fill_(envs_idx, True)
+ 
+         self._resample_actuation(envs_idx)  # [P1.2]
++        if self.recovery_init_prob > 0:  # [P1.5]
++            self._fallen_starts(envs_idx)
+ 
+         # fill extras
+         n_envs = envs_idx.sum() if envs_idx is not None else self.num_envs
+         self.extras["episode"] = {}
++        if self.recovery_init_prob > 0:  # [P1.5] share of recovery episodes ending upright, base above 0.2 m
++            self.extras["episode"]["recovery_success"] = recovery_success
+         for key, value in self.episode_sums.items():
+             if envs_idx is None:
+                 mean = value.mean()
+@@ -628,3 +676,18 @@
+         # Penalize contacts on thighs, calves and base: number of such links touching (|F| > 0.1 N)
+         contact_force = self.link_contact_force[:, self.penalised_contact_link_idx]
+         return torch.sum((contact_force > self.reward_cfg.get("collision_force_threshold", 0.1)).float(), dim=1)
++
++    # [P1.5] Learned recovery rewards (optional): positive, bounded, and paid in recovery episodes only.
++    def _reward_rec_upright(self):
++        # 1 upright, 0.5 on the side, 0 upside down
++        return 0.5 * (1.0 - self.projected_gravity[:, 2]) * self.recovering
++
++    def _reward_rec_height(self):
++        # base height up to the target, counted only when upright (a robot on its back is not "high")
++        height = (self.base_pos[:, 2] / self.reward_cfg["base_height_target"]).clip(0.0, 1.0)
++        return height * self._reward_rec_upright()
++
++    def _reward_rec_pose(self):
++        # close to the default pose, once upright
++        pose = torch.exp(-torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1))
++        return pose * self._reward_rec_upright()
+--- /dev/null
++++ b/go2_export.py
+@@ -0,0 +1,96 @@
++"""
++go2_export.py - [P1.5] Export a trained policy for deployment.
++
++    python go2_export.py -e go2-p15 --ckpt 1000
++writes logs/<exp>/exported/
++    policy.pt         TorchScript actor (mean action): obs [B, 45] -> action [B, 12]
++    deploy_cfg.json   everything the robot side needs to build the observation and apply the action
++                      (joint order, default pose, scales, gains, command ranges and deadzones, joint limits)
++go2_fsm.py (robot side) only reads these two files, so the robot computer needs neither Genesis nor rsl_rl.
++"""
++
++import argparse
++import json
++import os
++import pickle
++from importlib import metadata
++
++import numpy as np
++import torch
++from rsl_rl.runners import OnPolicyRunner
++from tensordict import TensorDict
++
++import genesis as gs
++from go2_env import Go2Env, nominal_world
++
++OBS_LAYOUT = ["base_ang_vel*ang_vel_scale (3)", "projected_gravity (3)", "commands*commands_scale (3)",
++              "(dof_pos-default)*dof_pos_scale (12)", "dof_vel*dof_vel_scale (12)", "last_action (12)"]
++
++
++def make_deploy_cfg(env):
++    """Deployment parameters, read from a built Go2Env (so they are exactly what training used)."""
++    q_lo, q_hi = env.robot.get_dofs_limit(env.motors_dof_idx)
++    q_lo, q_hi = (q_lo[0], q_hi[0]) if q_lo.ndim == 2 else (q_lo, q_hi)
++    cc = env.command_cfg
++    return {
++        "joint_names": list(env.env_cfg["joint_names"]),  # policy order = action order = observation order
++        "default_joint_angles": env.default_dof_pos.cpu().tolist(),
++        "kp": float(env.env_cfg["kp"]),
++        "kd": float(env.env_cfg["kd"]),
++        "action_scale": float(env.env_cfg["action_scale"]),
++        "clip_actions": float(env.env_cfg["clip_actions"]),
++        "obs_scales": {k: float(v) for k, v in env.obs_scales.items()},
++        "commands_scale": env.commands_scale.cpu().tolist(),
++        "command_ranges": {"lin_vel_x": list(cc["lin_vel_x_range"]), "lin_vel_y": list(cc["lin_vel_y_range"]),
++                           "ang_vel": list(cc["ang_vel_range"])},
++        "lin_deadzone": float(cc.get("lin_deadzone", 0.0)),
++        "ang_deadzone": float(cc.get("ang_deadzone", 0.0)),
++        "policy_dt": float(env.dt),
++        "torque_limits": env.torque_limits.cpu().tolist(),
++        "dof_pos_limits": torch.stack((q_lo, q_hi), dim=-1).cpu().tolist(),
++        "obs_layout": OBS_LAYOUT,
++    }
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument("-e", "--exp_name", type=str, default="go2-walking")
++    p.add_argument("--ckpt", type=int, required=True)
++    p.add_argument("--log_dir", type=str, default=None, help="default: logs/<exp_name>")
++    args = p.parse_args()
++
++    log_dir = args.log_dir or os.path.join("logs", args.exp_name)
++    out_dir = os.path.join(log_dir, "exported")
++    gs.init(backend=gs.cpu, logging_level="warning")
++    with open(os.path.join(log_dir, "cfgs.pkl"), "rb") as f:
++        env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
++    reward_cfg["reward_scales"] = {}
++    nominal_world(env_cfg, obs_cfg)
++    env = Go2Env(num_envs=1, env_cfg=env_cfg, obs_cfg=obs_cfg, reward_cfg=reward_cfg, command_cfg=command_cfg)
++
++    runner = OnPolicyRunner(env, train_cfg, log_dir=None, device=gs.device)
++    runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt"))
++    runner.export_policy_to_jit(out_dir, "policy.pt")
++
++    deploy_cfg = make_deploy_cfg(env)
++    deploy_cfg["source"] = {
++        "exp_name": args.exp_name, "ckpt": args.ckpt,
++        "genesis": gs.__version__, "rsl_rl": metadata.version("rsl-rl-lib"), "torch": torch.__version__,
++    }
++    with open(os.path.join(out_dir, "deploy_cfg.json"), "w") as f:
++        json.dump(deploy_cfg, f, indent=2)
++
++    # Check: the exported network gives the same actions as the training policy (deterministic mean)
++    jit = torch.jit.load(os.path.join(out_dir, "policy.pt"), map_location="cpu")
++    policy = runner.get_inference_policy(device="cpu")
++    obs = torch.randn(256, env.obs_buf.shape[-1])
++    with torch.no_grad():
++        ref = policy(TensorDict({"policy": obs}, batch_size=[256]))
++        err = (jit(obs) - ref).abs().max().item()
++    print(f"exported to {out_dir}: policy.pt, deploy_cfg.json   (max |jit - policy| on random obs: {err:.2e})")
++    if not np.isfinite(err) or err > 1e-4:
++        raise SystemExit("exported network does not match the training policy")
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null
++++ b/go2_fsm.py
+@@ -0,0 +1,282 @@
++"""
++go2_fsm.py - [P1.5] Deploy-side state machine for the Go2: damping -> stand up -> policy -> sit down.
++
++The state machine turns what the robot reports into one motor command per joint. The robot reports time, joint
++positions and velocities, IMU, and gamepad buttons and sticks. Each motor command is (q, dq, kp, kd, tau), and the
++motor drivers apply
++    tau_motor = kp * (q - q_meas) + kd * (dq - dq_meas) + tau
++Everything is in POLICY joint order (env_cfg["joint_names"]). The same class drives the real robot
++(go2_deploy_sdk2.py) and the Genesis test bench (go2_fsm_sim.py).
++
++Imports numpy and torch only (torch for the TorchScript policy). Copy go2_fsm.py, go2_commands.py and the
++logs/<exp>/exported/ folder (go2_export.py) to the robot computer.
++
++Modes
++    PASSIVE   damping, kp = 0, kd = 3 (unitree_rl_lab Go2 "Passive"). Start mode and software e-stop.
++    STAND_UP  minimum-jerk interpolation with moderate gains (unitree_rl_lab Go2 "FixStand": kp 60/80/80,
++              kd 5/4/4). From PASSIVE: current pose -> lying pose (1 s, folds the legs under the body) -> default
++              pose (1 s), as unitree_rl_lab. From POLICY: current pose -> default pose (1 s). Then holds.
++    POLICY    hand-over: gains ramp from the stand gains to the policy gains (kp 20, kd 0.5) over 0.5 s at the
++              default pose, then the policy runs at 50 Hz. Damping if the base tilts > 1 rad (unitree_rl_lab
++              bad_orientation) or a joint reads far outside its range.
++    SIT_DOWN  current pose -> lying pose in 2 s with the stand gains, hold 0.5 s, then PASSIVE.
++
++Gamepad (go2_deploy convention, L1 is the modifier for every mode change)
++    L1+R2 stand up    L1+A policy (only once standing)    L1+R1 sit down    L1+Y damping (software e-stop)
++    Policy mode: left stick = forward / sideways speed, right stick (x) = yaw rate (unitree_rl_gym deploy_real).
++"""
++
++from __future__ import annotations
++
++import json
++import os
++from dataclasses import dataclass, field
++from enum import Enum
++
++import numpy as np
++
++from go2_commands import sticks_to_command
++
++# Lying pose per leg (hip, thigh, calf) [rad]: unitree_rl_lab Go2 FixStand qs[1] (= go2_stand_example _targetPos_1
++# without the +-0.2 rad rear-hip offsets).
++LIE_POSE_LEG = (0.0, 1.36, -2.65)
++
++COMBOS = {"stand_up": ("L1", "R2"), "policy": ("L1", "A"), "sit_down": ("L1", "R1"), "damping": ("L1", "Y")}
++
++
++class Mode(Enum):
++    PASSIVE = "passive"
++    STAND_UP = "stand_up"
++    POLICY = "policy"
++    SIT_DOWN = "sit_down"
++
++
++@dataclass
++class FsmConfig:
++    stand_kp: tuple = (60.0, 80.0, 80.0)  # hip, thigh, calf (unitree_rl_lab Go2 FixStand)
++    stand_kd: tuple = (5.0, 4.0, 4.0)
++    passive_kd: float = 3.0  # unitree_rl_lab Go2 Passive
++    lie_s: float = 1.0  # stand up from PASSIVE, phase 1: current pose -> lying pose
++    stand_s: float = 1.0  # phase 2: lying pose -> default pose
++    restand_s: float = 1.0  # stand up from POLICY or SIT_DOWN: current pose -> default pose
++    ready_hold_s: float = 0.5  # L1+A is accepted after this long at the default pose
++    handover_s: float = 0.5  # policy entry: gain ramp stand -> policy at the default pose (0 = switch directly)
++    sit_s: float = 2.0  # current pose -> lying pose
++    sit_hold_s: float = 0.5  # then hold before PASSIVE
++    max_tilt_rad: float = 1.0  # POLICY -> PASSIVE beyond this base tilt
++    joint_limit_margin: float = 0.2  # POLICY -> PASSIVE when a joint reads this far outside its URDF range [rad]
++    combos: dict = field(default_factory=lambda: dict(COMBOS))
++
++
++def projected_gravity(quat_wxyz):
++    """Gravity direction in the base frame, R^T (0, 0, -1), for a (w, x, y, z) base orientation.
++    Same as Go2Env: transform_by_quat(global_gravity, inv_quat(base_quat)); same as unitree_rl_gym."""
++    w, x, y, z = quat_wxyz
++    return np.array([2.0 * (w * y - x * z), -2.0 * (y * z + w * x), -(1.0 - 2.0 * (x * x + y * y))])
++
++
++class MinJerkPath:
++    """Joint trajectory through waypoints, minimum-jerk on each segment (zero velocity and acceleration at the
++    waypoints). sample(t) -> (q, dq), held at the last waypoint after the end."""
++
++    def __init__(self, waypoints, durations):
++        self.q = [np.asarray(w, dtype=float) for w in waypoints]
++        self.T = list(durations)
++        self.duration = float(sum(self.T))
++
++    def sample(self, t):
++        for qa, qb, T in zip(self.q[:-1], self.q[1:], self.T):
++            if t < T:
++                s = t / T
++                pos = 10 * s**3 - 15 * s**4 + 6 * s**5
++                vel = (30 * s**2 - 60 * s**3 + 30 * s**4) / T
++                return qa + (qb - qa) * pos, (qb - qa) * vel
++            t -= T
++        return self.q[-1].copy(), np.zeros_like(self.q[-1])
++
++
++class Policy:
++    """Exported policy (go2_export.py): TorchScript network + deploy_cfg.json.
++
++    Builds the observation exactly as Go2Env._update_observation() (go2_fsm_sim.py checks it against the env):
++    base angular velocity, projected gravity, command, joint positions - default, joint velocities, last action.
++    policy_dir=None -> zero actions, i.e. hold the default pose with the policy gains (bench tests only).
++    """
++
++    def __init__(self, policy_dir=None, deploy_cfg=None):
++        if deploy_cfg is None:
++            with open(os.path.join(policy_dir, "deploy_cfg.json")) as f:
++                deploy_cfg = json.load(f)
++        self.cfg = deploy_cfg
++        self.net = None
++        if policy_dir is not None:
++            import torch
++
++            self._torch = torch
++            self.net = torch.jit.load(os.path.join(policy_dir, "policy.pt"), map_location="cpu").eval()
++        n = len(deploy_cfg["joint_names"])
++        self.default_q = np.asarray(deploy_cfg["default_joint_angles"], dtype=float)
++        self.obs_scales = deploy_cfg["obs_scales"]
++        self.commands_scale = np.asarray(deploy_cfg["commands_scale"], dtype=float)
++        self.action_scale = deploy_cfg["action_scale"]
++        self.clip_actions = deploy_cfg["clip_actions"]
++        self.last_action = np.zeros(n)
++        self.last_obs = None
++        self.steps = 0  # number of policy steps run so far
++
++    def reset(self):
++        self.last_action[:] = 0.0
++
++    def observation(self, gyro, quat_wxyz, q, dq, cmd):
++        s = self.obs_scales
++        return np.concatenate(
++            (
++                np.asarray(gyro) * s["ang_vel"],
++                projected_gravity(quat_wxyz),
++                np.asarray(cmd) * self.commands_scale,
++                (np.asarray(q) - self.default_q) * s["dof_pos"],
++                np.asarray(dq) * s["dof_vel"],
++                self.last_action,
++            )
++        ).astype(np.float32)
++
++    def step(self, gyro, quat_wxyz, q, dq, cmd):
++        """One policy step: returns the joint position targets [rad]."""
++        self.last_obs = self.observation(gyro, quat_wxyz, q, dq, cmd)
++        if self.net is None:
++            action = np.zeros_like(self.last_action)
++        else:
++            with self._torch.no_grad():
++                action = self.net(self._torch.from_numpy(self.last_obs)[None])[0].numpy().astype(float)
++        self.last_action = np.clip(action, -self.clip_actions, self.clip_actions)
++        self.steps += 1
++        return self.default_q + self.action_scale * self.last_action
++
++
++class Go2StateMachine:
++    """Call update() at the control rate (500 Hz on the robot, the physics rate in the bench)."""
++
++    def __init__(self, policy: Policy, cfg: FsmConfig | None = None, verbose=True):
++        self.policy = policy
++        self.cfg = cfg or FsmConfig()
++        self.verbose = verbose
++        names = policy.cfg["joint_names"]
++        kind = [{"hip": 0, "thigh": 1, "calf": 2}[n.split("_")[1]] for n in names]
++        self.stand_kp = np.array([self.cfg.stand_kp[k] for k in kind])
++        self.stand_kd = np.array([self.cfg.stand_kd[k] for k in kind])
++        self.policy_kp = np.full(len(names), float(policy.cfg["kp"]))
++        self.policy_kd = np.full(len(names), float(policy.cfg["kd"]))
++        self.stand_pose = policy.default_q.copy()
++        self.lie_pose = np.array([LIE_POSE_LEG[k] for k in kind])
++        lim = np.asarray(policy.cfg["dof_pos_limits"], dtype=float)  # [12, 2]
++        self.q_min = lim[:, 0] - self.cfg.joint_limit_margin
++        self.q_max = lim[:, 1] + self.cfg.joint_limit_margin
++        ranges = policy.cfg["command_ranges"]
++        self.max_cmd = (max(map(abs, ranges["lin_vel_x"])), max(map(abs, ranges["lin_vel_y"])),
++                        max(map(abs, ranges["ang_vel"])))
++        self.deadzones = (policy.cfg["lin_deadzone"], policy.cfg["ang_deadzone"])
++        self.policy_dt = policy.cfg["policy_dt"]
++
++        self.mode = Mode.PASSIVE
++        self.t_enter = 0.0
++        self.path = None
++        self.q_target = self.stand_pose.copy()
++        self.command = np.zeros(3)
++        self.next_policy_t = 0.0
++        self.policy_running = False
++        self.prev_buttons = frozenset()
++        self.events = []  # (t, message), for logs
++
++    # --- helpers -----------------------------------------------------------------------------------------------
++    def _log(self, t, msg):
++        self.events.append((t, msg))
++        if self.verbose:
++            print(f"[fsm {t:7.3f} s] {msg}")
++
++    def _enter(self, mode, t, q, msg):
++        if mode is Mode.STAND_UP:
++            if self.mode is Mode.PASSIVE:  # fold the legs under the body first (unitree_rl_lab FixStand)
++                self.path = MinJerkPath([q, self.lie_pose, self.stand_pose], [self.cfg.lie_s, self.cfg.stand_s])
++            else:
++                self.path = MinJerkPath([q, self.stand_pose], [self.cfg.restand_s])
++        elif mode is Mode.SIT_DOWN:
++            self.path = MinJerkPath([q, self.lie_pose], [self.cfg.sit_s])
++        elif mode is Mode.POLICY:
++            self.policy_running = False
++        self.mode, self.t_enter = mode, t
++        self._log(t, f"-> {mode.value} ({msg})")
++
++    def _combo(self, name, buttons):
++        keys = self.cfg.combos[name]
++        return all(k in buttons for k in keys) and any(k not in self.prev_buttons for k in keys)
++
++    def emergency_damping(self, t, reason):
++        """Damping now, whatever the mode (stale robot state, Ctrl+C, ...)."""
++        if self.mode is not Mode.PASSIVE:
++            self.path = None
++            self.mode, self.t_enter = Mode.PASSIVE, t
++            self._log(t, f"-> passive ({reason})")
++
++    def standing_ready(self, t):
++        return self.mode is Mode.STAND_UP and t - self.t_enter >= self.path.duration + self.cfg.ready_hold_s
++
++    # --- main entry ----------------------------------------------------------------------------------------------
++    def update(self, t, q, dq, gyro, quat_wxyz, buttons=(), sticks=(0.0, 0.0, 0.0, 0.0)):
++        """t [s], q / dq [12] (policy order), gyro [3] base frame [rad/s], quat (w, x, y, z), buttons: names of
++        the pressed buttons ("L1", "R2", "A", ...), sticks (lx, ly, rx, ry) in [-1, 1].
++        Returns q_des, dq_des, kp, kd, tau (arrays of 12, policy order)."""
++        q, dq = np.asarray(q, dtype=float), np.asarray(dq, dtype=float)
++        buttons = frozenset(buttons)
++
++        # 1) gamepad
++        if self._combo("damping", buttons) and self.mode is not Mode.PASSIVE:
++            self._enter(Mode.PASSIVE, t, q, "L1+Y, software e-stop")
++        elif self._combo("stand_up", buttons) and self.mode is not Mode.STAND_UP:
++            self._enter(Mode.STAND_UP, t, q, f"L1+R2, from {self.mode.value}")
++        elif self._combo("policy", buttons) and self.mode is Mode.STAND_UP:
++            if self.standing_ready(t):
++                self._enter(Mode.POLICY, t, q, "L1+A")
++            else:
++                self._log(t, "L1+A ignored: stand-up not finished")
++        elif self._combo("sit_down", buttons) and self.mode in (Mode.STAND_UP, Mode.POLICY):
++            self._enter(Mode.SIT_DOWN, t, q, "L1+R1")
++        self.prev_buttons = buttons
++
++        # 2) automatic transitions
++        if self.mode is Mode.SIT_DOWN and t - self.t_enter >= self.path.duration + self.cfg.sit_hold_s:
++            self._enter(Mode.PASSIVE, t, q, "sit-down done")
++        if self.mode is Mode.POLICY:
++            g = projected_gravity(quat_wxyz)
++            tilt = float(np.arccos(np.clip(-g[2], -1.0, 1.0)))
++            if tilt > self.cfg.max_tilt_rad:
++                limit = np.degrees(self.cfg.max_tilt_rad)
++                self._enter(Mode.PASSIVE, t, q, f"tilt {np.degrees(tilt):.0f} deg > {limit:.0f}")
++            elif np.any(q < self.q_min) or np.any(q > self.q_max):
++                self._enter(Mode.PASSIVE, t, q, "joint position outside its range")
++
++        # 3) motor command of the current mode
++        zeros = np.zeros_like(q)
++        if self.mode is Mode.PASSIVE:
++            return q.copy(), zeros, zeros, np.full_like(q, self.cfg.passive_kd), zeros
++        if self.mode in (Mode.STAND_UP, Mode.SIT_DOWN):
++            q_des, dq_des = self.path.sample(t - self.t_enter)
++            return q_des, dq_des, self.stand_kp, self.stand_kd, zeros
++        # POLICY: gain ramp at the default pose, then the policy at its own rate (targets held in between)
++        ramp = 1.0 if self.cfg.handover_s <= 0 else min((t - self.t_enter) / self.cfg.handover_s, 1.0)
++        if ramp < 1.0:
++            kp = self.stand_kp + ramp * (self.policy_kp - self.stand_kp)
++            kd = self.stand_kd + ramp * (self.policy_kd - self.stand_kd)
++            return self.stand_pose.copy(), zeros, kp, kd, zeros
++        if not self.policy_running:
++            self.policy.reset()  # last action = 0, as at the start of a training episode
++            self.policy_running, self.next_policy_t = True, t
++            self._log(t, "policy running")
++        if t >= self.next_policy_t - 1e-9:
++            lx, ly, rx, _ = sticks
++            self.command = sticks_to_command(ly, -lx, -rx, max_cmd=self.max_cmd, lin_deadzone=self.deadzones[0],
++                                             ang_deadzone=self.deadzones[1])
++            self.q_target = self.policy.step(gyro, quat_wxyz, q, dq, self.command)
++            self.next_policy_t += self.policy_dt
++            if self.next_policy_t < t:  # the control loop fell behind: do not try to catch up
++                self.next_policy_t = t + self.policy_dt
++        return self.q_target.copy(), zeros, self.policy_kp, self.policy_kd, zeros
+--- /dev/null
++++ b/go2_fsm_sim.py
+@@ -0,0 +1,252 @@
++"""
++go2_fsm_sim.py - [P1.5] Genesis test bench for the deploy-side state machine (go2_fsm.py).
++
++The robot starts lying in damping mode, then a scripted gamepad sequence runs:
++    full  (default)  L1+R2 stand up -> L1+A policy -> left stick forward -> L1+R1 sit down
++    estop            L1+R2 stand up -> L1+A policy -> L1+Y damping (software e-stop) while standing
++The bench applies the state machine's motor commands at the physics rate, as the motor drivers would:
++    tau = kp (q_des - q) + kd (dq_des - dq) + tau_ff, clipped at the Go2 torque limits.
++It also checks that go2_fsm.Policy builds the same observation as Go2Env. It prints one line per phase and
++saves a plot.
++
++    python go2_fsm_sim.py                       # zero-action policy: tests stand-up, hand-over and sit-down
++    python go2_fsm_sim.py -e go2-p15            # exported policy (python go2_export.py -e go2-p15 --ckpt N)
++    python go2_fsm_sim.py --scenario estop
++    python go2_fsm_sim.py -n 16 --dr            # 16 robots with the training randomization (all are summarized)
++    python go2_fsm_sim.py --handover-s 0        # switch to the policy gains at once instead of ramping them
++    python go2_fsm_sim.py --viewer
++"""
++
++import argparse
++import os
++import pickle
++
++import numpy as np
++import torch
++
++import genesis as gs
++from genesis.utils.geom import inv_quat, transform_by_quat
++
++from go2_env import Go2Env, nominal_world
++from go2_export import make_deploy_cfg
++from go2_fsm import LIE_POSE_LEG, FsmConfig, Go2StateMachine, Mode, Policy
++
++# Gamepad script: (time [s], buttons, held for PRESS_S) and (start, end, sticks (lx, ly, rx, ry))
++SCENARIOS = {
++    "full": {"buttons": [(1.0, ("L1", "R2")), (4.0, ("L1", "A")), (10.0, ("L1", "R1"))],
++             "sticks": [(6.0, 8.5, (0.0, 0.6, 0.0, 0.0))], "end": 13.5},
++    "estop": {"buttons": [(1.0, ("L1", "R2")), (4.0, ("L1", "A")), (6.5, ("L1", "Y"))],
++              "sticks": [], "end": 9.0},
++}
++PRESS_S = 0.1
++LIE_BASE_HEIGHT = 0.15  # [m] initial base height; the robot then settles in damping mode
++MODES = list(Mode)
++
++
++def buttons_at(scn, t):
++    return {b for t0, combo in scn["buttons"] if t0 <= t < t0 + PRESS_S for b in combo}
++
++
++def sticks_at(scn, t):
++    return next((s for t0, t1, s in scn["sticks"] if t0 <= t < t1), (0.0, 0.0, 0.0, 0.0))
++
++
++def env_observation(env, gyro, quat, q, dq, cmd, last_action):
++    """Observation of env 0 computed by Go2Env itself, from the same robot state (reference for the check)."""
++    dev, f = gs.device, gs.tc_float
++    quat = torch.as_tensor(quat, dtype=f, device=dev)
++    env.base_ang_vel[0] = torch.as_tensor(gyro, dtype=f, device=dev)
++    env.projected_gravity[0] = transform_by_quat(env.global_gravity, inv_quat(quat))
++    env.commands[0] = torch.as_tensor(cmd, dtype=f, device=dev)
++    env.dof_pos[0] = torch.as_tensor(q, dtype=f, device=dev)
++    env.dof_vel[0] = torch.as_tensor(dq, dtype=f, device=dev)
++    env.actions[0] = torch.as_tensor(last_action, dtype=f, device=dev)
++    env._update_observation()
++    return env.obs_buf[0].cpu().numpy()
++
++
++def phase_segments(t, mode0):
++    """Contiguous [start, end) index ranges of env 0's mode."""
++    cuts = [0] + [k for k in range(1, len(mode0)) if mode0[k] != mode0[k - 1]] + [len(mode0)]
++    return [(cuts[i], cuts[i + 1], MODES[mode0[cuts[i]]]) for i in range(len(cuts) - 1)]
++
++
++def summarize(log, dt, scn_name, fsm0):
++    t, z, tilt, tau, err, vz, mode = (log[k] for k in ("t", "z", "tilt", "tau", "err", "vz", "mode"))
++    print(f"\n=== phases (env 0 timeline; values over all {z.shape[1]} envs) ===")
++    print(f"{'mode':9s} {'t [s]':>13s} {'z start':>8s} {'z end min/max':>14s} {'tilt max':>9s} "
++          f"{'tau peak':>9s} {'|q*-q| max':>11s}")
++    for a, b, m in phase_segments(t, mode[:, 0]):
++        print(f"{m.value:9s} {t[a]:6.2f}-{t[b - 1] + dt:5.2f} {z[a].mean():8.3f} "
++              f"{z[b - 1].min():6.3f}/{z[b - 1].max():.3f} {tilt[a:b].max():7.1f} d {100 * tau[a:b].max():7.0f} % "
++              f"{err[a:b].max():9.2f} r")
++    seg = {m: (a, b) for a, b, m in phase_segments(t, mode[:, 0])}  # last segment of each mode
++    print("\n=== checks ===")
++    if Mode.STAND_UP in seg:
++        a, b = seg[Mode.STAND_UP]
++        ok = (z[b - 1] > 0.25) & (tilt[b - 1] < 10.0)
++        print(f"stand-up: {int(ok.sum())}/{len(ok)} robots standing (z > 0.25 m, tilt < 10 deg) at the end; "
++              f"z = {z[b - 1].min():.3f}..{z[b - 1].max():.3f} m")
++    if Mode.POLICY in seg:
++        a, b = seg[Mode.POLICY]
++        w = slice(a, min(b, a + round(1.5 / dt)))
++        drop = z[a] - z[w].min(0)
++        print(f"hand-over (first 1.5 s of policy mode): base drop {100 * drop.max():.1f} cm max, "
++              f"tilt {tilt[w].max():.1f} deg max, tau peak {100 * tau[w].max():.0f} % of limit")
++    if scn_name == "full" and Mode.SIT_DOWN in seg:
++        a, b = seg[Mode.SIT_DOWN]
++        print(f"sit-down: base sink speed {100 * (-vz[a:b]).max():.0f} cm/s max, z at the end "
++              f"{z[b - 1].min():.3f}..{z[b - 1].max():.3f} m, tilt {tilt[a:b].max():.1f} deg max")
++    if scn_name == "estop":
++        t_stop = next(tt for tt, msg in fsm0.events if "e-stop" in msg)
++        k = round(t_stop / dt)
++        print(f"e-stop at {t_stop:.2f} s: base sink speed {100 * (-vz[k:]).max():.0f} cm/s max, "
++              f"z after 1 s {z[min(k + round(1.0 / dt), len(t) - 1)].max():.3f} m (max over robots), "
++              f"tilt {tilt[k:].max():.1f} deg max")
++
++
++def plot(log, dt, path, title):
++    import matplotlib
++
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++
++    t, mode0 = log["t"], log["mode"][:, 0]
++    ink, muted, hairline, band = "#0b0b0b", "#52514e", "#e6e5e0", "#f0efec"
++    color = "#2a78d6"
++    panels = (("base height [m]", log["z"]), ("base tilt [deg]", log["tilt"]),
++              ("peak joint torque [% of limit]", 100 * log["tau"]))
++    fig, axes = plt.subplots(3, 1, figsize=(9, 6.2), sharex=True)
++    for ax, (label, y) in zip(axes, panels):
++        for i, (a, b, m) in enumerate(phase_segments(t, mode0)):
++            if i % 2:
++                ax.axvspan(t[a], t[b - 1] + dt, color=band, linewidth=0)
++        if y.shape[1] > 1:  # all robots: min-max band
++            ax.fill_between(t, y.min(1), y.max(1), color=color, alpha=0.12, linewidth=0)
++        ax.plot(t, y[:, 0], color=color, linewidth=1.6)
++        ax.set_ylabel(label, fontsize=8, color=ink)
++        ax.tick_params(labelsize=7, colors=muted)
++        ax.grid(True, axis="y", color=hairline, linewidth=0.6)
++        ax.set_axisbelow(True)
++        for side in ("top", "right"):
++            ax.spines[side].set_visible(False)
++    for a, b, m in phase_segments(t, mode0):
++        axes[0].annotate(m.value.replace("_", " "), ((t[a] + t[b - 1]) / 2, 1.0), xycoords=("data", "axes fraction"),
++                         xytext=(0, 3), textcoords="offset points", ha="center", fontsize=7, color=muted)
++    axes[-1].set_xlabel("time [s]", fontsize=8, color=ink)
++    axes[-1].set_xlim(0, t[-1] + dt)
++    fig.suptitle(title, fontsize=9, color=ink, x=0.01, ha="left")
++    fig.tight_layout()
++    fig.savefig(path, dpi=150)
++    plt.close(fig)
++    print(f"plot saved to {path}")
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument("-e", "--exp_name", type=str, default=None, help="run with an exported policy (go2_export.py)")
++    p.add_argument("--log_dir", type=str, default=None, help="default: logs/<exp_name>")
++    p.add_argument("--scenario", choices=list(SCENARIOS), default="full")
++    p.add_argument("-n", "--num_envs", type=int, default=1)
++    p.add_argument("--dr", action="store_true", help="training randomization: friction, mass, CoM, motor strength")
++    p.add_argument("--handover-s", type=float, default=FsmConfig.handover_s)
++    p.add_argument("--seed", type=int, default=0)
++    p.add_argument("--viewer", action="store_true")
++    p.add_argument("--gpu", action="store_true")
++    p.add_argument("--out", type=str, default=None, help="plot path (default: fsm_<scenario>.png next to the run)")
++    args = p.parse_args()
++
++    gs.init(backend=gs.gpu if args.gpu else gs.cpu, logging_level="warning", seed=args.seed)
++    log_dir = args.log_dir or (os.path.join("logs", args.exp_name) if args.exp_name else None)
++    if log_dir:
++        with open(os.path.join(log_dir, "cfgs.pkl"), "rb") as f:
++            env_cfg, obs_cfg, reward_cfg, command_cfg, _ = pickle.load(f)
++    else:
++        import go2_train
++
++        env_cfg, obs_cfg, reward_cfg, command_cfg = go2_train.get_cfgs()
++    reward_cfg["reward_scales"] = {}
++    if not args.dr:
++        nominal_world(env_cfg, obs_cfg)
++    obs_cfg["add_noise"] = False  # the observation check compares noise-free observations
++    # The bench runs its own control loop: no termination, no reset, no pushes, no fallen starts
++    env_cfg.update(termination_if_roll_greater_than=1e9, termination_if_pitch_greater_than=1e9,
++                   terminate_after_contacts_on=[], episode_length_s=1e6, recovery={})
++    env = Go2Env(args.num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=args.viewer)
++    N = env.num_envs
++
++    export_dir = os.path.join(log_dir, "exported") if log_dir else None
++    if export_dir and not os.path.isfile(os.path.join(export_dir, "policy.pt")):
++        raise SystemExit(f"{export_dir}/policy.pt not found: run go2_export.py -e {args.exp_name} --ckpt N first")
++    deploy_cfg = make_deploy_cfg(env)
++    fsm_cfg = FsmConfig(handover_s=args.handover_s)
++    fsms = [Go2StateMachine(Policy(export_dir) if export_dir else Policy(deploy_cfg=deploy_cfg), fsm_cfg,
++                            verbose=(i == 0)) for i in range(N)]
++    # The exported deploy_cfg.json must describe the same robot interface as this env
++    exported = fsms[0].policy.cfg
++    for key in ("joint_names", "default_joint_angles", "kp", "kd", "action_scale", "commands_scale", "obs_scales"):
++        a, b = exported[key], deploy_cfg[key]
++        same = a == b if isinstance(a, (str, dict)) or key == "joint_names" else np.allclose(a, b)
++        if not same:
++            raise SystemExit(f"deploy_cfg.json and the env disagree on {key}: {a} vs {b}")
++
++    # Lying start: lying pose, base at LIE_BASE_HEIGHT, then damping mode settles it on the ground
++    kinds = {"hip": 0, "thigh": 1, "calf": 2}
++    lie_urdf = [LIE_POSE_LEG[kinds[j.name.split("_")[1]]] for j in env.robot.joints[1:]]  # URDF joint order
++    qpos = env.init_qpos.clone()
++    qpos[2] = LIE_BASE_HEIGHT
++    qpos[7:] = torch.tensor(lie_urdf, dtype=gs.tc_float, device=gs.device)
++    env.robot.set_qpos(qpos, zero_velocity=True)
++
++    scn = SCENARIOS[args.scenario]
++    dt, n_steps = env.sim_dt, round(scn["end"] / env.sim_dt)
++    motors = env.motors_dof_idx
++    log = {k: np.zeros((n_steps, N)) for k in ("z", "tilt", "tau", "err", "vz")}
++    log["mode"] = np.zeros((n_steps, N), dtype=int)
++    log["t"] = np.arange(n_steps) * dt
++    obs_err, n_policy_steps, n_checked = 0.0, 0, 0
++    for k in range(n_steps):
++        t = k * dt
++        q = env.robot.get_dofs_position(motors)
++        dq = env.robot.get_dofs_velocity(motors)
++        quat = env.robot.get_quat()
++        inv = inv_quat(quat)
++        gyro = transform_by_quat(env.robot.get_ang(), inv)
++        qn, dqn, quatn, gyron = (x.cpu().numpy().astype(float) for x in (q, dq, quat, gyro))
++        buttons, sticks = buttons_at(scn, t), sticks_at(scn, t)
++        cmds = [f.update(t, qn[i], dqn[i], gyron[i], quatn[i], buttons, sticks) for i, f in enumerate(fsms)]
++        q_des, dq_des, kp, kd, tau_ff = (torch.as_tensor(np.stack(c), dtype=gs.tc_float, device=gs.device)
++                                         for c in zip(*cmds))
++        tau = env.motor_strength * (kp * (q_des - q) + kd * (dq_des - dq)) + tau_ff
++        tau = torch.clip(tau, -env.torque_limits, env.torque_limits)
++        env.robot.control_dofs_force(tau[:, env.actions_dof_idx], env.motors_dof_slice)
++
++        # Observation check on env 0: deploy-side observation vs Go2Env's, from the same state
++        pol = fsms[0].policy
++        if pol.steps != n_policy_steps:  # the policy ran during this update
++            n_policy_steps = pol.steps
++            ref = env_observation(env, gyron[0], quatn[0], qn[0], dqn[0], fsms[0].command, pol.last_obs[-12:])
++            obs_err = max(obs_err, float(np.abs(ref - pol.last_obs).max()))
++            n_checked += 1
++
++        env.scene.step()
++
++        g = transform_by_quat(env.global_gravity, inv)
++        log["z"][k] = env.robot.get_pos()[:, 2].cpu().numpy()
++        log["vz"][k] = env.robot.get_vel()[:, 2].cpu().numpy()
++        log["tilt"][k] = np.degrees(np.arccos(np.clip(-g[:, 2].cpu().numpy(), -1.0, 1.0)))
++        log["tau"][k] = (tau.abs() / env.torque_limits).max(-1).values.cpu().numpy()
++        log["err"][k] = (q_des - q).abs().max(-1).values.cpu().numpy()
++        log["mode"][k] = [MODES.index(f.mode) for f in fsms]
++
++    print(f"\nobservation check: {n_checked} policy steps, max |deploy obs - Go2Env obs| = {obs_err:.2e}")
++    policy_name = f"{args.exp_name} (exported)" if export_dir else "zero-action policy"
++    summarize(log, dt, args.scenario, fsms[0])
++    out = args.out or os.path.join(log_dir or ".", f"fsm_{args.scenario}.png")
++    title = (f"{args.scenario} | {policy_name} | {N} robot{'s' if N > 1 else ''}"
++             f"{' with training randomization' if args.dr else ''} | hand-over ramp {args.handover_s:.1f} s")
++    plot(log, dt, out, title)
++
++
++if __name__ == "__main__":
++    main()
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -153,6 +153,8 @@
+         "penalize_contacts_on": ["thigh", "calf", "base"],
+         "terminate_after_contacts_on": ["base"],
+         "dof_vel_limits": dict(GO2_DOF_VEL_LIMITS),  # [rad/s] Unitree go2_description URDF
++        # [P1.5] learned recovery, off: go2_train.py --recovery sets init_prob 0.15 (MetalHead recovery_init_prob)
++        "recovery": {"init_prob": 0.0, "spawn_height": 0.5},
+     }
+     obs_cfg = {
+         "obs_scales": {
+@@ -232,11 +234,16 @@
+     parser.add_argument("--lcp", type=float, default=0.0, help="LCP gradient-penalty coefficient (paper: 0.002)")
+     parser.add_argument("--caps-t", type=float, default=0.0, help="CAPS temporal coefficient (paper, Ant: 0.1)")
+     parser.add_argument("--caps-s", type=float, default=0.0, help="CAPS spatial coefficient (paper, Ant: 0.5)")
++    # [P1.5] learned recovery (optional, W12): 15 % of the episodes start fallen, with recovery rewards
++    parser.add_argument("--recovery", action="store_true", help="train fall recovery as well")
+     args = parser.parse_args()
+ 
+     log_dir = f"logs/{args.exp_name}"
+     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
+     train_cfg = get_train_cfg(args.exp_name)
++    if args.recovery:  # [P1.5] weights: my starting point, to be tuned (MetalHead uses AMP + task rewards instead)
++        env_cfg["recovery"]["init_prob"] = 0.15
++        reward_cfg["reward_scales"].update({"rec_upright": 1.0, "rec_height": 1.0, "rec_pose": 0.5})
+     if args.lcp > 0 or args.caps_t > 0 or args.caps_s > 0:  # [P1.4]
+         train_cfg["algorithm"].update(
+             {

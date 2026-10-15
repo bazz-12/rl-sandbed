@@ -1,0 +1,463 @@
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -12,12 +12,41 @@
+ # links unless they are listed in `links_to_keep`; kept separate, their contact force can be read.
+ FOOT_LINKS = ("FL_foot", "FR_foot", "RL_foot", "RR_foot")
+ 
++# [P1.2] Motor limits of the real Go2, from Unitree's go2_description URDF (unitree_ros). The go2.urdf bundled
++# with Genesis has Go1-like calf limits (35.55 Nm, 20.07 rad/s), so they are set explicitly here.
++GO2_TORQUE_LIMITS = {"hip": 23.7, "thigh": 23.7, "calf": 45.43}  # [Nm]
++
++# [P1.2] Physics used when a config does not say otherwise (runs trained before P1.2 included), so that every
++# policy is evaluated in the same simulated world.
++PHYSICS_DEFAULTS = {
++    "sim_dt": 0.005,  # [s] physics step: 200 Hz, as legged_gym / Isaac Lab
++    "decimation": 4,  # physics steps per policy step -> policy at 1 / (0.005 * 4) = 50 Hz
++    "armature": 0.01,  # [kg m^2] reflected rotor inertia (MuJoCo Menagerie go2.xml); Genesis' URDF default is 0.1
++    "latency_s": 0.02,  # [s] action latency without randomization (the example's "1 step latency")
++}
++
+ 
+ def gs_rand(lower, upper, batch_shape):
+     assert lower.shape == upper.shape
+     return (upper - lower) * torch.rand(size=(*batch_shape, *lower.shape), dtype=gs.tc_float, device=gs.device) + lower
+ 
+ 
++def uniform(lower, upper, shape):
++    """[P1.2] Uniform samples in [lower, upper] (scalars) of the given shape."""
++    return (upper - lower) * torch.rand(size=shape, dtype=gs.tc_float, device=gs.device) + lower
++
++
++def nominal_world(env_cfg, obs_cfg, latency_s=None):
++    """[P1.2] Evaluation world: no domain randomization, no observation noise, no pushes, a fixed latency.
++
++    Call it on the configs loaded from cfgs.pkl before building the env (go2_eval.py, go2_metrics.py).
++    """
++    env_cfg["domain_rand"] = {}
++    obs_cfg["add_noise"] = False
++    if latency_s is not None:
++        env_cfg["latency_s"] = latency_s
++
++
+ class Go2Env:
+     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False):
+         self.num_envs: int = num_envs
+@@ -26,8 +55,11 @@
+         self.num_commands = command_cfg["num_commands"]
+         self.device = gs.device
+ 
+-        self.simulate_action_latency = True  # there is a 1 step latency on real robot
+-        self.dt = 0.02  # control frequency on real robot is 50hz
++        # [P1.2] physics at 1 / sim_dt (200 Hz), policy at 1 / (sim_dt * decimation) (50 Hz). The PD controller runs
++        # at the physics rate (see step()). self.dt stays the POLICY period: rewards, episode length, metrics use it.
++        self.sim_dt = env_cfg.get("sim_dt", PHYSICS_DEFAULTS["sim_dt"])
++        self.decimation = env_cfg.get("decimation", PHYSICS_DEFAULTS["decimation"])
++        self.dt = self.sim_dt * self.decimation  # 0.02 s
+         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt)
+ 
+         self.env_cfg = env_cfg
+@@ -37,11 +69,12 @@
+ 
+         self.obs_scales: dict[str, float] = obs_cfg["obs_scales"]
+         self.reward_scales: dict[str, float] = reward_cfg["reward_scales"]
++        self.domain_rand: dict = env_cfg.get("domain_rand", {})  # [P1.2] empty = no randomization
+ 
+         self.scene = gs.Scene(
+             sim_options=gs.options.SimOptions(
+-                dt=self.dt,
+-                substeps=2,
++                dt=self.sim_dt,  # [P1.2] was dt=0.02 with substeps=2 (100 Hz physics, PD inside the solver)
++                substeps=1,
+             ),
+             rigid_options=gs.options.RigidOptions(
+                 enable_self_collision=False,
+@@ -49,6 +82,8 @@
+                 # can save memory. Violating this condition will raise an exception.
+                 max_collision_pairs=20,
+                 tolerance=1e-5,
++                # [P1.2] per-env link mass / center of mass (domain randomization) need batched link info
++                batch_links_info=bool({"added_mass_range", "com_shift_range"} & self.domain_rand.keys()),
+             ),
+             vis_options=gs.options.VisOptions(
+                 rendered_envs_idx=[0],
+@@ -62,7 +97,7 @@
+         )
+ 
+         # add plain
+-        self.scene.add_entity(
++        self.plane = self.scene.add_entity(  # [P1.2] kept: its friction is randomized too
+             gs.morphs.URDF(
+                 file="urdf/plane/plane.urdf",
+                 fixed=True,
+@@ -79,6 +114,8 @@
+                 pos=self.env_cfg["base_init_pos"],
+                 quat=self.env_cfg["base_init_quat"],
+                 links_to_keep=links_to_keep,
++                # [P1.2] rotor inertia added to every joint (Genesis' default for URDF is 0.1)
++                default_armature=self.env_cfg.get("armature", PHYSICS_DEFAULTS["armature"]),
+             ),
+         )
+ 
+@@ -91,14 +128,28 @@
+             device=gs.device,
+         )
+         self.actions_dof_idx = torch.argsort(self.motors_dof_idx)
++        # [P1.2] the 12 motor dofs are contiguous (local dofs 6..17): written as a slice, in dof order
++        self.motors_dof_slice = slice(int(self.motors_dof_idx.min()), int(self.motors_dof_idx.max()) + 1)
++        assert self.motors_dof_slice.stop - self.motors_dof_slice.start == self.num_actions
++        # [P1.2] world-frame linear x, y velocity dofs of the floating base (pushes)
++        base_dof = self.robot.joints[0].dof_start
++        self.base_lin_xy_dofs = [base_dof, base_dof + 1]
++        self.base_link_idx = 0
+         # [P1.1] foot link indices (local to the robot), same order as self.foot_links
+         self.feet_link_idx = torch.tensor(
+             [self.robot.get_link(name).idx_local for name in self.foot_links], dtype=gs.tc_int, device=gs.device
+         )
+ 
+-        # PD control parameters
+-        self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motors_dof_idx)
+-        self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motors_dof_idx)
++        # [P1.2] PD control: computed in step() at the physics rate and applied as a torque, so that gains, motor
++        # strength and torque clipping can differ per env without batched dof info (legged_gym _compute_torques).
++        # The Genesis internal PD (set_dofs_kp / set_dofs_kv + control_dofs_position) is no longer used.
++        self.kp_nominal = self.env_cfg["kp"]
++        self.kd_nominal = self.env_cfg["kd"]
++        joint_type = [name.split("_")[1] for name in self.env_cfg["joint_names"]]  # "hip" / "thigh" / "calf"
++        torque_limits = self.env_cfg.get("torque_limits", GO2_TORQUE_LIMITS)
++        self.torque_limits = torch.tensor([torque_limits[t] for t in joint_type], dtype=gs.tc_float, device=gs.device)
++        # the solver clamps applied forces to its force range: make it match the clipping done here
++        self.robot.set_dofs_force_range(-self.torque_limits, self.torque_limits, self.motors_dof_idx)
+ 
+         # Define global gravity direction vector
+         self.global_gravity = torch.tensor([0.0, 0.0, -1.0], dtype=gs.tc_float, device=gs.device)
+@@ -141,6 +192,7 @@
+         self.dof_pos = torch.empty_like(self.actions)
+         self.dof_vel = torch.empty_like(self.actions)
+         self.last_dof_vel = torch.zeros_like(self.actions)
++        self.torques = torch.zeros_like(self.actions)  # [P1.2] torques applied at the last physics step [Nm]
+         self.base_pos = torch.empty((self.num_envs, 3), dtype=gs.tc_float, device=gs.device)
+         self.base_quat = torch.empty((self.num_envs, 4), dtype=gs.tc_float, device=gs.device)
+         self.base_euler = torch.empty((self.num_envs, 3), dtype=gs.tc_float, device=gs.device)
+@@ -157,6 +209,47 @@
+         self.feet_air_time = torch.zeros((self.num_envs, n_feet), dtype=gs.tc_float, device=gs.device)
+         self.feet_air_time_at_touchdown = torch.zeros_like(self.feet_air_time)
+         self.zero_cmd = torch.zeros((self.num_envs,), dtype=gs.tc_bool, device=gs.device)
++
++        # [P1.2] per-episode actuator randomization (sampled in _reset_idx)
++        self.kp = torch.full((self.num_envs, 1), self.kp_nominal, dtype=gs.tc_float, device=gs.device)
++        self.kd = torch.full((self.num_envs, 1), self.kd_nominal, dtype=gs.tc_float, device=gs.device)
++        self.motor_strength = torch.ones((self.num_envs, self.num_actions), dtype=gs.tc_float, device=gs.device)
++        self.latency_steps = torch.zeros((self.num_envs,), dtype=torch.long, device=gs.device)
++        latency_s = self.env_cfg.get("latency_s", PHYSICS_DEFAULTS["latency_s"])
++        lat_lo, lat_hi = self.domain_rand.get("latency_range_s", (latency_s, latency_s))
++        # in physics steps, at most one policy step (the previous target is held for that many physics steps)
++        self.latency_steps_range = (
++            min(round(lat_lo / self.sim_dt), self.decimation),
++            min(round(lat_hi / self.sim_dt), self.decimation),
++        )
++
++        # [P1.2] pushes (legged_gym _push_robots): all envs every push_interval_s, sync-free
++        self.common_step_counter = 0
++        push_interval_s = self.domain_rand.get("push_interval_s", 0.0)
++        self.push_interval = round(push_interval_s / self.dt) if push_interval_s > 0 else 0
++        self.max_push_vel_xy = self.domain_rand.get("max_push_vel_xy", 0.0)
++
++        # [P1.2] observation noise (legged_gym noise_scales, in physical units, scaled like the observation)
++        noise_scales = self.obs_cfg.get("noise_scales", {})
++        self.add_noise = bool(self.obs_cfg.get("add_noise", False) and noise_scales)
++        if self.add_noise:
++            n_level = self.obs_cfg.get("noise_level", 1.0)
++            segments = (
++                (3, noise_scales["ang_vel"] * self.obs_scales["ang_vel"]),
++                (3, noise_scales["gravity"]),
++                (3, 0.0),  # commands
++                (self.num_actions, noise_scales["dof_pos"] * self.obs_scales["dof_pos"]),
++                (self.num_actions, noise_scales["dof_vel"] * self.obs_scales["dof_vel"]),
++                (self.num_actions, 0.0),  # last actions
++            )
++            self.noise_scale_vec = n_level * torch.cat(
++                [torch.full((n,), s, dtype=gs.tc_float, device=gs.device) for n, s in segments]
++            )
++
++        # [P1.2] friction, base mass and CoM: sampled once per env, after build (Genesis DR guide; legged_gym also
++        # samples friction and mass at env creation)
++        self._randomize_physics()
++
+         self.extras = dict()  # extra information for logging
+ 
+         # prepare reward functions and multiply reward scales by dt
+@@ -168,6 +261,58 @@
+ 
+         self.reset()
+ 
++    def _randomize_physics(self):
++        # [P1.2] Values are kept (self.friction, ...) for logging, or for a privileged critic later.
++        dr, N = self.domain_rand, self.num_envs
++        self.friction = torch.ones((N,), dtype=gs.tc_float, device=gs.device)
++        self.added_mass = torch.zeros((N,), dtype=gs.tc_float, device=gs.device)
++        self.com_shift = torch.zeros((N, 3), dtype=gs.tc_float, device=gs.device)
++        if "friction_range" in dr:
++            # Genesis takes max(mu_a, mu_b) for a contact pair and every geom starts at mu = 1, so scaling the robot
++            # alone would never make the ground slipperier: ground and robot get the same ratio -> contact mu = ratio.
++            self.friction = uniform(*dr["friction_range"], (N,))
++            n_links = self.robot.n_links
++            self.robot.set_friction_ratio(self.friction[:, None].expand(N, n_links).contiguous(), list(range(n_links)))
++            self.plane.set_friction_ratio(self.friction[:, None], [0])
++        if "added_mass_range" in dr:
++            # set_mass_shift() is gone in Genesis 1.4: set_links_mass() takes the absolute mass (batched link info)
++            self.added_mass = uniform(*dr["added_mass_range"], (N,))
++            mass = self.robot.get_links_mass([self.base_link_idx])  # [N, 1]
++            self.robot.set_links_mass(mass + self.added_mass[:, None], [self.base_link_idx])
++        if "com_shift_range" in dr:
++            # set_COM_shift() is gone too: set_links_COM() takes the CoM position in the link frame
++            self.com_shift = uniform(*dr["com_shift_range"], (N, 3))
++            com = self.robot.get_links_COM([self.base_link_idx])  # [N, 1, 3]
++            self.robot.set_links_COM(com + self.com_shift[:, None, :], [self.base_link_idx])
++
++    def _resample_actuation(self, envs_idx):
++        # [P1.2] Per-episode actuator randomization: Kp, Kd (per env), motor strength (per env and joint),
++        # action latency (per env, in physics steps). Drawn for all envs, applied to the ones being reset.
++        dr, N = self.domain_rand, self.num_envs
++        kp = self.kp_nominal * uniform(*dr.get("kp_range", (1.0, 1.0)), (N, 1))
++        kd = self.kd_nominal * uniform(*dr.get("kd_range", (1.0, 1.0)), (N, 1))
++        strength = uniform(*dr.get("motor_strength_range", (1.0, 1.0)), (N, self.num_actions))
++        lo, hi = self.latency_steps_range
++        latency = torch.randint(lo, hi + 1, (N,), dtype=torch.long, device=gs.device)
++        if envs_idx is None:
++            self.kp.copy_(kp)
++            self.kd.copy_(kd)
++            self.motor_strength.copy_(strength)
++            self.latency_steps.copy_(latency)
++        else:
++            torch.where(envs_idx[:, None], kp, self.kp, out=self.kp)
++            torch.where(envs_idx[:, None], kd, self.kd, out=self.kd)
++            torch.where(envs_idx[:, None], strength, self.motor_strength, out=self.motor_strength)
++            torch.where(envs_idx, latency, self.latency_steps, out=self.latency_steps)
++
++    def _push_robots(self):
++        # [P1.2] legged_gym _push_robots: a random planar velocity kick for all envs every push_interval_s.
++        # Added to the current velocity (as Isaac Lab push_by_setting_velocity), i.e. an impulse of up to
++        # max_push_vel_xy per axis. Free-joint dofs 0 and 1 are the base velocity along world x and y.
++        vel = self.robot.get_dofs_velocity(self.base_lin_xy_dofs)
++        vel += uniform(-self.max_push_vel_xy, self.max_push_vel_xy, (self.num_envs, 2))
++        self.robot.set_dofs_velocity(vel, self.base_lin_xy_dofs)
++
+     def _resample_commands(self, envs_idx):
+         commands = gs_rand(*self.commands_limits, (self.num_envs,))
+         # [P1.1] Zero small commands (legged_gym _resample_commands), with the same rule as at deployment
+@@ -187,10 +332,25 @@
+ 
+     def step(self, actions):
+         self.actions = torch.clip(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"])
+-        exec_actions = self.last_actions if self.simulate_action_latency else self.actions
+-        target_dof_pos = exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
+-        self.robot.control_dofs_position(target_dof_pos[:, self.actions_dof_idx], slice(6, 18))
+-        self.scene.step()
++
++        # [P1.2] pushes (the policy only sees their effect at its next observation)
++        self.common_step_counter += 1
++        if self.push_interval > 0 and self.common_step_counter % self.push_interval == 0:
++            self._push_robots()
++
++        # [P1.2] decimation loop: physics and PD at 1 / sim_dt, policy at 1 / dt. Action latency: the previous
++        # target is held for the first `latency_steps` physics steps (0 .. decimation, sampled per episode),
++        # instead of the example's fixed one-policy-step delay (= latency_steps == decimation).
++        target_new = self.actions * self.env_cfg["action_scale"] + self.default_dof_pos
++        target_old = self.last_actions * self.env_cfg["action_scale"] + self.default_dof_pos
++        for i in range(self.decimation):
++            target = torch.where((i < self.latency_steps)[:, None], target_old, target_new)
++            q = self.robot.get_dofs_position(self.motors_dof_idx)
++            qd = self.robot.get_dofs_velocity(self.motors_dof_idx)
++            torques = self.motor_strength * (self.kp * (target - q) - self.kd * qd)
++            self.torques = torch.clip(torques, -self.torque_limits, self.torque_limits)  # URDF effort limits
++            self.robot.control_dofs_force(self.torques[:, self.actions_dof_idx], self.motors_dof_slice)
++            self.scene.step()
+ 
+         # update buffers
+         self.episode_length_buf += 1
+@@ -292,6 +452,8 @@
+             self.episode_length_buf.masked_fill_(envs_idx, 0)
+             self.reset_buf.masked_fill_(envs_idx, True)
+ 
++        self._resample_actuation(envs_idx)  # [P1.2]
++
+         # fill extras
+         n_envs = envs_idx.sum() if envs_idx is not None else self.num_envs
+         self.extras["episode"] = {}
+@@ -321,6 +483,8 @@
+             ),
+             dim=-1,
+         )
++        if self.add_noise:  # [P1.2] uniform noise, as legged_gym
++            self.obs_buf += (2.0 * torch.rand_like(self.obs_buf) - 1.0) * self.noise_scale_vec
+ 
+     def reset(self):
+         self._reset_idx()
+@@ -369,3 +533,8 @@
+             (self.feet_air_time_at_touchdown - self.reward_cfg["feet_air_time_target"]) * self.feet_first_contact, dim=1
+         )
+         return rew * ~self.zero_cmd
++
++    def _reward_orientation(self):
++        # [P1.2] legged_gym: penalize a non-flat base. Takes over from the 10 deg tilt termination, which is
++        # relaxed so that the robot can lean and recover from pushes.
++        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -17,7 +17,7 @@
+ 
+ import genesis as gs
+ 
+-from go2_env import Go2Env, FOOT_LINKS
++from go2_env import Go2Env, FOOT_LINKS, GO2_TORQUE_LIMITS
+ from go2_commands import LIN_DEADZONE, ANG_DEADZONE  # [P1.1] same deadzone as at deployment
+ 
+ import subprocess, json, sys, torch
+@@ -118,18 +118,37 @@
+         "kp": 20.0,
+         "kd": 0.5,
+         # termination
+-        "termination_if_roll_greater_than": 10,  # degree
+-        "termination_if_pitch_greater_than": 10,
++        # [P1.2] 10 -> 30 deg: a 1 m/s push tilts the robot past 10 deg, and terminating there would never let the
++        # policy learn to recover (the orientation reward below keeps the base level in normal walking)
++        "termination_if_roll_greater_than": 30,  # degree
++        "termination_if_pitch_greater_than": 30,
+         # base pose
+         "base_init_pos": [0.0, 0.0, 0.42],
+         "base_init_quat": [1.0, 0.0, 0.0, 0.0],
+         "episode_length_s": 20.0,
+         "resampling_time_s": 4.0,
+         "action_scale": 0.25,
+-        "simulate_action_latency": True,
+         "clip_actions": 100.0,
+         # [P1.1] foot links kept separate from the calves (contact forces for the air-time reward)
+         "foot_links": list(FOOT_LINKS),
++        # [P1.2] actuation fidelity: 200 Hz physics + PD, 50 Hz policy, real rotor inertia, real torque limits
++        "sim_dt": 0.005,
++        "decimation": 4,
++        "armature": 0.01,  # MuJoCo Menagerie go2.xml (Genesis URDF default: 0.1)
++        "torque_limits": dict(GO2_TORQUE_LIMITS),  # clipping, from Unitree's go2_description URDF
++        "latency_s": 0.02,  # used only when latency is not randomized (replaces simulate_action_latency)
++        # [P1.2] domain randomization (legged_gym / Isaac Lab defaults, widened where the plan says so)
++        "domain_rand": {
++            "friction_range": [0.5, 1.25],  # contact friction coefficient (ground and robot)
++            "added_mass_range": [-1.0, 2.0],  # [kg] on the base (Go2 ~15 kg)
++            "com_shift_range": [-0.03, 0.03],  # [m] base CoM offset, each axis
++            "kp_range": [0.85, 1.15],  # x Kp, per env and episode
++            "kd_range": [0.85, 1.15],  # x Kd, per env and episode
++            "motor_strength_range": [0.9, 1.1],  # x PD torque, per env, joint and episode
++            "latency_range_s": [0.0, 0.02],  # action latency, per env and episode (5 ms resolution)
++            "push_interval_s": 15.0,  # legged_gym
++            "max_push_vel_xy": 1.0,  # [m/s] legged_gym
++        },
+     }
+     obs_cfg = {
+         "obs_scales": {
+@@ -138,6 +157,9 @@
+             "dof_pos": 1.0,
+             "dof_vel": 0.05,
+         },
++        # [P1.2] observation noise, legged_gym noise_scales (physical units: rad/s, -, rad, rad/s)
++        "add_noise": True,
++        "noise_scales": {"ang_vel": 0.2, "gravity": 0.05, "dof_pos": 0.01, "dof_vel": 1.5},
+     }
+     reward_cfg = {
+         "tracking_sigma": 0.25,
+@@ -158,6 +180,7 @@
+             "action_rate": -0.005,
+             "similar_to_default": -0.1,
+             "feet_air_time": 1.0,  # [P1.1] legged_gym default, gated off at zero command
++            "orientation": -2.5,  # [P1.2] Isaac Lab Go2 flat (flat_orientation_l2); replaces the 10 deg termination
+         },
+     }
+     command_cfg = {
+--- a/go2_eval.py
++++ b/go2_eval.py
+@@ -14,7 +14,7 @@
+ 
+ import genesis as gs
+ 
+-from go2_env import Go2Env
++from go2_env import Go2Env, nominal_world
+ 
+ 
+ def main():
+@@ -25,6 +25,9 @@
+     parser.add_argument("--ckpt", type=int, default=100, help="Checkpoint iteration to load")
+     # [P1.1] pin the command, e.g. --cmd 0 0 0 to check standing still (default: random commands as in training)
+     parser.add_argument("--cmd", type=float, nargs=3, metavar=("VX", "VY", "WZ"), default=None)
++    # [P1.2] by default the viewer runs the nominal world; --dr keeps the training randomization (to watch pushes)
++    parser.add_argument("--dr", action="store_true", help="keep domain randomization, noise and pushes")
++    parser.add_argument("--latency-ms", type=float, default=20.0, help="action latency in the nominal world")
+     args = parser.parse_args()
+ 
+     gs.init(backend=gs.cpu)
+@@ -37,6 +40,8 @@
+         for key, v in zip(("lin_vel_x_range", "lin_vel_y_range", "ang_vel_range"), args.cmd):
+             command_cfg[key] = [v, v]
+         command_cfg["rel_standing_envs"] = 0.0
++    if not args.dr:
++        nominal_world(env_cfg, obs_cfg, latency_s=args.latency_ms / 1000.0)  # [P1.2]
+ 
+     env = Go2Env(
+         num_envs=1,
+--- a/go2_metrics.py
++++ b/go2_metrics.py
+@@ -22,7 +22,7 @@
+ from rsl_rl.runners import OnPolicyRunner
+ 
+ import genesis as gs
+-from go2_env import Go2Env
++from go2_env import Go2Env, nominal_world
+ 
+ 
+ # =============================================================================
+@@ -513,8 +513,10 @@
+     if not torch.isfinite(lim["tau_lim"]).all() or (lim["tau_lim"] > 1e3).any():
+         print("  WARNING: some torque limits are infinite/huge -> the URDF effort limits were not loaded.")
+ 
+-    lim["mass"] = torch.tensor(float(env.robot.get_mass()), device="cpu")
+-    print(f"  total robot mass: {lim['mass']:.2f} kg")
++    # [P1.2] per-env mass when the base mass is randomized (batched link info): a scalar or [N], CoT broadcasts it
++    lim["mass"] = torch.as_tensor(env.robot.get_mass(), dtype=torch.float32).cpu()
++    spread = f" (per env {lim['mass'].min():.2f} .. {lim['mass'].max():.2f})" if lim["mass"].numel() > 1 else ""
++    print(f"  total robot mass: {lim['mass'].mean():.2f} kg{spread}")
+     return lim
+ 
+ 
+@@ -534,6 +536,12 @@
+                    help="uniform noise on initial joint positions [rad] (0 = identical starts)")
+     p.add_argument("--log_dir", type=str, default=None,
+                    help="folder containing cfgs.pkl and model_*.pt (default: logs/<exp_name>)")
++    # [P1.2] every policy is measured in the same nominal world (no randomization, no noise, no pushes, fixed
++    # latency) unless --keep_dr; a fall is a tilt beyond --fall_deg whatever the run's training termination
++    p.add_argument("--keep_dr", action="store_true",
++                   help="keep the run's domain randomization, noise and pushes (robustness test)")
++    p.add_argument("--latency_ms", type=float, default=20.0, help="action latency in the nominal world")
++    p.add_argument("--fall_deg", type=float, default=10.0, help="roll/pitch beyond this counts as a fall")
+     args = p.parse_args()
+ 
+     log_dir = args.log_dir or os.path.join("logs", args.exp_name)
+@@ -550,6 +558,10 @@
+     with open(os.path.join(log_dir, "cfgs.pkl"), "rb") as f:
+         env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
+     reward_cfg["reward_scales"] = {}                       # no reward computation needed
++    if not args.keep_dr:                                   # [P1.2]
++        nominal_world(env_cfg, obs_cfg, latency_s=args.latency_ms / 1000.0)
++    env_cfg["termination_if_roll_greater_than"] = args.fall_deg    # [P1.2] same fall criterion for every run
++    env_cfg["termination_if_pitch_greater_than"] = args.fall_deg
+ 
+     total_s = args.warmup_s + args.measure_s
+     env_cfg["episode_length_s"] = total_s + 10.0           # no timeouts during the run
+@@ -581,8 +593,9 @@
+     rec = run_rollout(env, policy, n_warmup, n_measure)
+     rec.update(get_joint_limits(env))
+ 
++    world = "training DR" if args.keep_dr else f"nominal world, latency {args.latency_ms:.0f} ms"  # [P1.2]
+     title = (f"{args.exp_name} | ckpt {args.ckpt} | seed {args.seed} | init_noise {args.init_noise} rad | "
+-             f"{num_envs} envs | {args.measure_s:.0f} s")
++             f"{num_envs} envs | {args.measure_s:.0f} s | {world} | fall > {args.fall_deg:.0f} deg")
+     csv_path = os.path.join(log_dir, f"metrics_ckpt{args.ckpt}_seed{args.seed}.csv")
+     # Genesis makes CUDA the default device for new tensors; all metrics work on the
+     # CPU copies of the recordings, so new tensors must be created on the CPU too.

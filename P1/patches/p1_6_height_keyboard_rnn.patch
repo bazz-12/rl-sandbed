@@ -1,0 +1,1241 @@
+--- a/go2_commands.py
++++ b/go2_commands.py
+@@ -11,7 +11,8 @@
+ 
+ 
+ def apply_command_deadzone(cmd, lin_deadzone=LIN_DEADZONE, ang_deadzone=ANG_DEADZONE):
+-    """Zero small commands. cmd: [..., 3] = (vx, vy, wz). Returns a new array/tensor of the same type."""
++    """Zero small commands. cmd: [..., 3] = (vx, vy, wz), or [..., 4] with the body-height offset dh [P1.6],
++    which passes through unchanged. Returns a new array/tensor of the same type."""
+     out = cmd * 1.0                                             # copy, works for torch and numpy
+     small_lin = (out[..., 0] ** 2 + out[..., 1] ** 2) < lin_deadzone ** 2
+     small_ang = abs(out[..., 2]) < ang_deadzone
+--- /dev/null
++++ b/go2_compare.py
+@@ -0,0 +1,149 @@
++"""
++go2_compare.py - [P1.6] Compare the go2_metrics.py tables of several runs, side by side. No Genesis needed.
++
++    python go2_compare.py logs/go2-p15/metrics_ckpt999_seed0.csv logs/go2-p16/metrics_ckpt999_seed0.csv
++    python go2_compare.py A.csv B.csv C.csv --cols lin_err act_acc "tau>10Hz" --rows "0 0 0" "0.5 0 0"
++    python go2_compare.py A.csv B.csv --all                  # every metric
++
++The first file is the reference (A). For the others, each cell shows the value and its change from A: in % of A,
++or as a difference "d..." when A is ~0 or the metric is compared to a command (measured velocities, height z).
++"~" = within 2 standard errors of A (the difference may be noise; more --reps in go2_metrics.py narrows it).
++Rows are matched on the command (vx, vy, wz[, dh]): a run without the body-height command matches the dh = 0 rows
++of a run with it. --cols picks metrics by the start of their name (lin_err matches lin_err[m/s]).
++Lower is better for most metrics, not all: vx_meas / vy_meas / wz_meas / z / speed are compared to the command,
++and duty / step_freq / swing_h describe the gait (see TEST_AND_TINKER.md).
++"""
++
++import argparse
++import csv
++import math
++
++CMD_COLS = ("vx", "vy", "wz", "dh")
++DEFAULT_COLS = ("lin_err", "yaw_err", "z_err", "act_acc", "hf>10Hz", "tau>10Hz", "tau_peak", "CoT", "slip_v")
++SIGNED = ("vx_meas", "vy_meas", "wz_meas", "z[m]")  # compared to a command or target: differences, not %
++
++
++def load(path):
++    """-> {command key: row dict}, metric names (in file order), rows in file order."""
++    with open(path, newline="") as f:
++        rows = list(csv.DictReader(f))
++    if not rows:
++        raise SystemExit(f"{path}: empty table")
++    names = [c[: -len("_mean")] for c in rows[0] if c.endswith("_mean")]
++    table = {}
++    for r in rows:
++        table[command_key([r.get(c, 0.0) for c in CMD_COLS])] = r
++    return table, names
++
++
++def command_key(values):
++    values = [float(v) for v in values] + [0.0] * (4 - len(values))  # dh = 0 for 3-command runs
++    return tuple(round(v, 3) + 0.0 for v in values[:4])
++
++
++def number(text):
++    try:
++        return float(text)
++    except (TypeError, ValueError):
++        return math.nan
++
++
++def envs_in_bin(row):
++    try:
++        return int(row["falls"].split("/")[1])
++    except (KeyError, IndexError, ValueError):
++        return 0
++
++
++def cell(name, ref, row):
++    """'value (change)' of one metric of one run against the reference row."""
++    if row is None:
++        return "-"
++    v = number(row.get(f"{name}_mean"))
++    if math.isnan(v):
++        return "n/a"
++    text = f"{v:.3g}"
++    if ref is None or ref is row:
++        return text
++    a = number(ref.get(f"{name}_mean"))
++    if math.isnan(a):
++        return text
++    if abs(a) < 1e-9 or name.startswith(SIGNED):
++        change = f"d{v - a:+.3g}"
++    else:
++        pct = 100.0 * (v - a) / abs(a)
++        change = f"{pct:+.1f}%" if abs(pct) < 10 else f"{pct:+.0f}%"
++    # 2 standard errors of the difference (std over the envs of the bin, n envs per bin)
++    sa, sv = number(ref.get(f"{name}_std")), number(row.get(f"{name}_std"))
++    na, nv = envs_in_bin(ref), envs_in_bin(row)
++    noise = ""
++    if na > 0 and nv > 0 and not (math.isnan(sa) or math.isnan(sv)):
++        if abs(v - a) <= 2.0 * math.sqrt(sa * sa / na + sv * sv / nv):
++            noise = "~"
++    return f"{text} ({change}{noise})"
++
++
++def print_table(title, header, lines):
++    widths = [max(len(str(x)) for x in col) for col in zip(header, *lines)]
++    print(f"\n--- {title} ---")
++    print("  ".join(str(h).rjust(w) for h, w in zip(header, widths)))
++    print("  ".join("-" * w for w in widths))
++    for line in lines:
++        print("  ".join(str(x).rjust(w) for x, w in zip(line, widths)))
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    p.add_argument("csv", nargs="+", help="metrics_ckpt<N>_seed<S>.csv files; the first one is the reference")
++    p.add_argument("--cols", nargs="+", default=None, help="metrics to show, by the start of their name")
++    p.add_argument("--all", action="store_true", help="show every metric")
++    p.add_argument("--rows", nargs="+", default=None, metavar='"VX VY WZ [DH]"', help="commands to show")
++    args = p.parse_args()
++
++    tables, names = [], []
++    for path in args.csv:
++        table, file_names = load(path)
++        tables.append(table)
++        names += [n for n in file_names if n not in names]
++    letters = [chr(ord("A") + i) for i in range(len(tables))]
++    for letter, path in zip(letters, args.csv):
++        print(f"{letter} = {path}" + ("   (reference)" if letter == "A" else ""))
++
++    if args.all:
++        shown = names
++    else:
++        shown = []
++        for pattern in args.cols or DEFAULT_COLS:
++            matches = [n for n in names if n.startswith(pattern)]
++            if not matches and args.cols:
++                raise SystemExit(f"--cols {pattern}: no such metric. Available: {' '.join(names)}")
++            shown += [n for n in matches if n not in shown]
++
++    if args.rows:
++        keys = [command_key(r.replace(",", " ").split()) for r in args.rows]
++    else:  # the reference's rows, then the rows only the other tables have
++        keys = list(tables[0])
++        for t in tables[1:]:
++            keys += [k for k in t if k not in keys]
++    with_dh = any(k[3] != 0.0 for k in keys) or any("dh" in next(iter(t.values())) for t in tables)
++    cmd_names = list(CMD_COLS if with_dh else CMD_COLS[:3])
++
++    def command_cells(key):
++        ood = any(t.get(key, {}).get("ood") == "True" for t in tables)
++        return [f"{v:.2f}" for v in key[: len(cmd_names)]] + ["*" if ood else ""]
++
++    header = cmd_names + ["ood"] + letters
++    lines = [command_cells(k) + [t[k]["falls"] if k in t else "-" for t in tables] for k in keys]
++    print_table("falls (fallen envs / envs)", header, lines)
++    for name in shown:
++        lines = []
++        for k in keys:
++            ref = tables[0].get(k)
++            lines.append(command_cells(k) + [cell(name, ref, t.get(k)) for t in tables])
++        print_table(name, header, lines)
++    print("\n(change vs A in %, or d = difference; ~ = within 2 standard errors of A; - = no such row; "
++          "* = command outside a training range)")
++
++
++if __name__ == "__main__":
++    main()
+--- a/go2_deploy_sdk2.py
++++ b/go2_deploy_sdk2.py
+@@ -14,6 +14,7 @@
+   the onboard controller stops sending its own commands. The robot lies down first (StandDown).
+ - Every 2 ms it reads rt/lowstate (joints, IMU, gamepad), calls Go2StateMachine.update() and writes rt/lowcmd.
+ - It starts in damping. Gamepad: L1+R2 stand up, L1+A policy, L1+R1 sit down, L1+Y damping (software e-stop).
++  [P1.6] Policies trained with the body-height command: D-pad up / down = body height +-1 cm.
+ - Damping if no new robot state arrived for 50 ms, and for 1 s on Ctrl+C before exiting.
+ """
+ 
+@@ -160,7 +161,9 @@
+             if node.state is None:
+                 print("waiting for rt/lowstate ...")
+             elif fsm.mode is Mode.POLICY:
+-                print(f"policy | command vx {fsm.command[0]:+.2f} vy {fsm.command[1]:+.2f} wz {fsm.command[2]:+.2f}")
++                height = f" dh {100 * fsm.command[3]:+.0f} cm" if len(fsm.command) > 3 else ""  # [P1.6]
++                print(f"policy | command vx {fsm.command[0]:+.2f} vy {fsm.command[1]:+.2f} wz {fsm.command[2]:+.2f}"
++                      f"{height}")
+     except KeyboardInterrupt:
+         signal.signal(signal.SIGINT, signal.SIG_IGN)  # a second Ctrl+C must not cut the damping phase short
+         node.stop_requested = True
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -17,6 +17,11 @@
+ GO2_TORQUE_LIMITS = {"hip": 23.7, "thigh": 23.7, "calf": 45.43}  # [Nm]
+ GO2_DOF_VEL_LIMITS = {"hip": 30.1, "thigh": 30.1, "calf": 15.70}  # [rad/s] [P1.3] soft joint velocity limits
+ 
++# [P1.6] Go2 leg segments (go2.urdf bundled with Genesis: calf and foot joints at z = -0.213 m from their parent).
++# Used by nominal_dof_pos(), the leg pose of a commanded body height.
++GO2_THIGH_LENGTH = 0.213  # [m] thigh joint -> calf joint
++GO2_CALF_LENGTH = 0.213  # [m] calf joint -> foot sphere centre
++
+ # [P1.2] Physics used when a config does not say otherwise (runs trained before P1.2 included), so that every
+ # policy is evaluated in the same simulated world.
+ PHYSICS_DEFAULTS = {
+@@ -37,14 +42,15 @@
+     return (upper - lower) * torch.rand(size=shape, dtype=gs.tc_float, device=gs.device) + lower
+ 
+ 
+-def obs_noise_scales(obs_cfg, num_actions):
++def obs_noise_scales(obs_cfg, num_actions, num_commands=3):
+     """[P1.2] Half-width of the uniform observation noise, per observation dimension (legged_gym noise_scales, in
+-    physical units, scaled like the observation). [P1.4] Moved out of Go2Env so go2_train.py can reuse it."""
++    physical units, scaled like the observation). [P1.4] Moved out of Go2Env so go2_train.py can reuse it.
++    [P1.6] num_commands: 4 with the body-height command, so the vector keeps the size of the observation."""
+     noise_scales, obs_scales = obs_cfg["noise_scales"], obs_cfg["obs_scales"]
+     segments = (
+         (3, noise_scales["ang_vel"] * obs_scales["ang_vel"]),
+         (3, noise_scales["gravity"]),
+-        (3, 0.0),  # commands
++        (num_commands, 0.0),  # commands
+         (num_actions, noise_scales["dof_pos"] * obs_scales["dof_pos"]),
+         (num_actions, noise_scales["dof_vel"] * obs_scales["dof_vel"]),
+         (num_actions, 0.0),  # last actions
+@@ -107,8 +113,9 @@
+                 rendered_envs_idx=[0],
+             ),
+             viewer_options=gs.options.ViewerOptions(
+-                camera_pos=(2.0, 0.0, 2.5),
+-                camera_lookat=(0.0, 0.0, 0.5),
++                # [P1.6] configurable (go2_teleop.py: chase camera); the defaults are the former fixed values
++                camera_pos=tuple(self.env_cfg.get("viewer_camera_pos", (2.0, 0.0, 2.5))),
++                camera_lookat=tuple(self.env_cfg.get("viewer_camera_lookat", (0.0, 0.0, 0.5))),
+                 camera_fov=40,
+             ),
+             show_viewer=show_viewer,
+@@ -137,6 +144,7 @@
+             ),
+         )
+ 
++        self._add_extra_entities()  # [P1.6] hook: cameras etc. must be added before build (go2_teleop.py --record)
+         self.scene.build(n_envs=num_envs)
+ 
+         # names to indices
+@@ -210,19 +218,24 @@
+         self.rew_buf = torch.empty((self.num_envs,), dtype=gs.tc_float, device=gs.device)
+         self.reset_buf = torch.ones((self.num_envs,), dtype=gs.tc_bool, device=gs.device)
+         self.episode_length_buf = torch.empty((self.num_envs,), dtype=gs.tc_int, device=gs.device)
++        # [P1.6] commands = (vx, vy, wz), plus the body-height offset dh [m] when num_commands is 4. Scales and limits
++        # are built from lists, so 3 and 4 commands share one code path.
++        if self.num_commands not in (3, 4):
++            raise ValueError(f"num_commands must be 3 (vx, vy, wz) or 4 (+ body height dh), not {self.num_commands}")
++        self.height_cmd = self.num_commands == 4
++        command_scales = [self.obs_scales["lin_vel"], self.obs_scales["lin_vel"], self.obs_scales["ang_vel"]]
++        command_ranges = [
++            self.command_cfg["lin_vel_x_range"],
++            self.command_cfg["lin_vel_y_range"],
++            self.command_cfg["ang_vel_range"],
++        ]
++        if self.height_cmd:
++            command_scales.append(self.obs_scales["body_height"])
++            command_ranges.append(self.command_cfg["body_height_range"])
+         self.commands = torch.empty((self.num_envs, self.num_commands), dtype=gs.tc_float, device=gs.device)
+-        self.commands_scale = torch.tensor(
+-            [self.obs_scales["lin_vel"], self.obs_scales["lin_vel"], self.obs_scales["ang_vel"]],
+-            device=gs.device,
+-            dtype=gs.tc_float,
+-        )
++        self.commands_scale = torch.tensor(command_scales, device=gs.device, dtype=gs.tc_float)
+         self.commands_limits: tuple[torch.Tensor, torch.Tensor] = tuple(
+-            torch.tensor(values, dtype=gs.tc_float, device=gs.device)
+-            for values in zip(
+-                self.command_cfg["lin_vel_x_range"],
+-                self.command_cfg["lin_vel_y_range"],
+-                self.command_cfg["ang_vel_range"],
+-            )
++            torch.tensor(values, dtype=gs.tc_float, device=gs.device) for values in zip(*command_ranges)
+         )
+         self.actions = torch.zeros((self.num_envs, self.num_actions), dtype=gs.tc_float, device=gs.device)
+         self.last_actions = torch.zeros_like(self.actions)
+@@ -243,6 +256,18 @@
+             dtype=gs.tc_float,
+             device=gs.device,
+         )
++        # [P1.6] leg geometry for nominal_dof_pos(): per leg (FR, FL, RR, RL), the indices of its thigh and calf
++        # joints (policy order), and where the default pose puts the foot centre in the leg's sagittal plane,
++        # relative to the thigh joint (the thigh joints are at the height of the base origin, go2.urdf)
++        names = self.env_cfg["joint_names"]
++        thigh_idx = [i for i, name in enumerate(names) if name.endswith("_thigh_joint")]
++        calf_idx = [names.index(names[i].replace("_thigh_joint", "_calf_joint")) for i in thigh_idx]
++        self.leg_thigh_idx = torch.tensor(thigh_idx, dtype=torch.long, device=gs.device)
++        self.leg_calf_idx = torch.tensor(calf_idx, dtype=torch.long, device=gs.device)
++        th0, kn0 = self.default_dof_pos[self.leg_thigh_idx], self.default_dof_pos[self.leg_calf_idx]
++        l1, l2 = GO2_THIGH_LENGTH, GO2_CALF_LENGTH
++        self.leg_foot_x = -(l1 * torch.sin(th0) + l2 * torch.sin(th0 + kn0))  # [4] forward of the thigh joint [m]
++        self.leg_foot_depth = l1 * torch.cos(th0) + l2 * torch.cos(th0 + kn0)  # [4] below the thigh joint [m]
+         # [P1.1] foot contact state (legged_gym _reward_feet_air_time) and the zero-command flag
+         n_feet = len(self.foot_links)
+         self.last_feet_contact = torch.zeros((self.num_envs, n_feet), dtype=gs.tc_bool, device=gs.device)
+@@ -258,6 +283,9 @@
+         self.recovery_init_prob = recovery.get("init_prob", 0.0)
+         self.recovery_spawn_height = recovery.get("spawn_height", 0.5)  # [m] base height of the fallen start
+         self.recovering = torch.zeros((self.num_envs,), dtype=gs.tc_bool, device=gs.device)
++        # [P1.6] recovery success counts (fix of the P1.5 log, see _reset_idx)
++        self.rec_ended_ema = torch.zeros((), dtype=gs.tc_float, device=gs.device)
++        self.rec_success_ema = torch.zeros((), dtype=gs.tc_float, device=gs.device)
+         # [P1.3] |net contact force| per robot link, updated in step()
+         self.link_contact_force = torch.zeros((self.num_envs, self.robot.n_links), dtype=gs.tc_float, device=gs.device)
+ 
+@@ -286,7 +314,7 @@
+         if self.add_noise:
+             # [P1.4] computed by obs_noise_scales(), also used for the CAPS sigma in go2_train.py
+             self.noise_scale_vec = torch.tensor(
+-                obs_noise_scales(self.obs_cfg, self.num_actions), dtype=gs.tc_float, device=gs.device
++                obs_noise_scales(self.obs_cfg, self.num_actions, self.num_commands), dtype=gs.tc_float, device=gs.device
+             )
+ 
+         # [P1.2] friction, base mass and CoM: sampled once per env, after build (Genesis DR guide; legged_gym also
+@@ -304,6 +332,24 @@
+ 
+         self.reset()
+ 
++    def _add_extra_entities(self):
++        """[P1.6] Called just before scene.build(): a subclass adds cameras or objects here (go2_teleop.py)."""
++
++    def nominal_dof_pos(self, dh):
++        """[P1.6] Joint pose (policy order) that moves the base by dh [m] (tensor [N]) with each foot where the default
++        pose puts it: planar 2-link IK on thigh and calf, hips at their default angle. nominal_dof_pos(0) is the
++        default pose. Out of reach, the calf angle saturates (straight leg) instead of returning NaN."""
++        l1, l2 = GO2_THIGH_LENGTH, GO2_CALF_LENGTH
++        x = self.leg_foot_x  # [4]
++        depth = self.leg_foot_depth + dh[:, None]  # [N, 4]
++        cos_knee = ((x * x + depth * depth - l1 * l1 - l2 * l2) / (2.0 * l1 * l2)).clamp(-1.0, 1.0)
++        knee = -torch.acos(cos_knee)  # calf angle: negative = bent, knee behind the hip
++        thigh = torch.atan2(-x, depth) - torch.atan2(l2 * torch.sin(knee), l1 + l2 * torch.cos(knee))
++        q = self.default_dof_pos.repeat(dh.shape[0], 1)
++        q[:, self.leg_thigh_idx] = thigh
++        q[:, self.leg_calf_idx] = knee
++        return q
++
+     def _randomize_physics(self):
+         # [P1.2] Values are kept (self.friction, ...) for logging, or for a privileged critic later.
+         dr, N = self.domain_rand, self.num_envs
+@@ -393,8 +439,10 @@
+         standing = torch.rand((self.num_envs,), dtype=gs.tc_float, device=gs.device) < self.command_cfg.get(
+             "rel_standing_envs", 0.0
+         )
+-        commands.masked_fill_(standing[:, None], 0.0)
+-        if self.recovery_init_prob > 0:  # [P1.5] recovery episodes: get up and stand still
++        # [P1.6] velocities only: a standing env keeps its body-height offset (standing still while crouched is a
++        # valid command). With 3 commands, [:, :3] is the whole tensor.
++        commands[:, :3].masked_fill_(standing[:, None], 0.0)
++        if self.recovery_init_prob > 0:  # [P1.5] recovery episodes: get up and stand still (dh = 0 too)
+             commands.masked_fill_(self.recovering[:, None], 0.0)
+         if envs_idx is None:
+             self.commands.copy_(commands)
+@@ -441,7 +489,8 @@
+         self.link_contact_force = torch.linalg.norm(self.robot.get_links_net_contact_force(), dim=-1)  # [N, n_links]
+         self._update_feet_contacts()  # [P1.1]
+         # [P1.1] "zero command" = all three components zero (the deadzone makes it exact)
+-        self.zero_cmd = torch.linalg.norm(self.commands, dim=1) < 0.1
++        # [P1.6] velocities only: the body-height offset is not a motion command
++        self.zero_cmd = torch.linalg.norm(self.commands[:, :3], dim=1) < 0.1
+ 
+         # compute reward
+         self.rew_buf.zero_()
+@@ -503,8 +552,12 @@
+         if self.recovery_init_prob > 0:  # [P1.5] success of the recovery episodes that end here (logged below)
+             ended = self.recovering if envs_idx is None else self.recovering & envs_idx
+             upright = (self.projected_gravity[:, 2] < -0.9) & (self.base_pos[:, 2] > 0.2)
+-            n_ended = ended.sum()
+-            recovery_success = torch.where(n_ended > 0, (ended & upright).sum() / n_ended.clamp(min=1), 0.0)
++            # [P1.6] fix: rsl_rl averages a logged value over every step of the iteration, and P1.5 logged 0 at the
++            # steps where no recovery episode ended, so the curve stayed far below the true rate. Now the counts
++            # decay by 0.99 per step (a window of about 100 steps) and their ratio is logged at every step.
++            self.rec_ended_ema.mul_(0.99).add_(ended.sum())
++            self.rec_success_ema.mul_(0.99).add_((ended & upright).sum())
++            recovery_success = self.rec_success_ema / self.rec_ended_ema.clamp(min=1e-6)
+ 
+         # reset state
+         self.robot.set_qpos(self.init_qpos, envs_idx=envs_idx, zero_velocity=True, skip_forward=True)
+@@ -573,7 +626,7 @@
+             (
+                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+                 self.projected_gravity,  # 3
+-                self.commands * self.commands_scale,  # 3
++                self.commands * self.commands_scale,  # 3, or 4 with the body-height command [P1.6]
+                 (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
+                 self.dof_vel * self.obs_scales["dof_vel"],  # 12
+                 self.actions,  # 12
+@@ -618,7 +671,9 @@
+ 
+     def _reward_similar_to_default(self):
+         # Penalize joint poses far away from default pose
+-        deviation = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
++        # [P1.6] with the body-height command, from the leg pose of the commanded height (= default pose at dh = 0)
++        reference = self.nominal_dof_pos(self.commands[:, 3]) if self.height_cmd else self.default_dof_pos
++        deviation = torch.sum(torch.abs(self.dof_pos - reference), dim=1)
+         # [P1.1] x stand_still_scale at zero command while the base is (nearly) at rest (Isaac Lab Spot
+         # joint_position_penalty). The speed gate keeps the normal weight while the base moves (e.g. after a
+         # push), so the robot may still step to recover.
+@@ -629,7 +684,10 @@
+ 
+     def _reward_base_height(self):
+         # Penalize base height away from target
+-        return torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
++        target = self.reward_cfg["base_height_target"]
++        if self.height_cmd:  # [P1.6] target + commanded offset (walk-these-ways _reward_jump)
++            target = target + self.commands[:, 3]
++        return torch.square(self.base_pos[:, 2] - target)
+ 
+     def _reward_feet_air_time(self):
+         # [P1.1] legged_gym: on each touchdown, reward (air time - target), i.e. long steps; this also stops the
+--- a/go2_eval.py
++++ b/go2_eval.py
+@@ -17,6 +17,21 @@
+ from go2_env import Go2Env, nominal_world
+ 
+ 
++def pin_command(parser, cmd, command_cfg):
++    """[P1.1] A [v, v] range pins a command; the training deadzone still applies.
++    [P1.6] VX VY WZ [DH]: DH only for runs trained with the body-height command (dh = 0 when omitted)."""
++    n_cmd = command_cfg["num_commands"]
++    if len(cmd) not in (3, 4):
++        parser.error("--cmd takes VX VY WZ, or VX VY WZ DH for runs trained with --height-cmd")
++    if len(cmd) == 4 and n_cmd < 4:
++        parser.error("--cmd: this run takes VX VY WZ (no DH: it was trained without --height-cmd)")
++    keys = ["lin_vel_x_range", "lin_vel_y_range", "ang_vel_range"] + (["body_height_range"] if n_cmd == 4 else [])
++    values = list(cmd) + [0.0] * (len(keys) - len(cmd))
++    for key, v in zip(keys, values):
++        command_cfg[key] = [v, v]
++    command_cfg["rel_standing_envs"] = 0.0
++
++
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument(
+@@ -24,10 +39,13 @@
+     )
+     parser.add_argument("--ckpt", type=int, default=100, help="Checkpoint iteration to load")
+     # [P1.1] pin the command, e.g. --cmd 0 0 0 to check standing still (default: random commands as in training)
+-    parser.add_argument("--cmd", type=float, nargs=3, metavar=("VX", "VY", "WZ"), default=None)
++    # [P1.6] 4th value: body-height offset dh [m], for runs trained with --height-cmd
++    parser.add_argument("--cmd", type=float, nargs="+", metavar="V", default=None, help="VX VY WZ [DH]")
+     # [P1.2] by default the viewer runs the nominal world; --dr keeps the training randomization (to watch pushes)
+     parser.add_argument("--dr", action="store_true", help="keep domain randomization, noise and pushes")
+     parser.add_argument("--latency-ms", type=float, default=20.0, help="action latency in the nominal world")
++    # [P1.6] watch a --recovery run (P1.5) get up: every episode starts from a random fallen pose
++    parser.add_argument("--fallen", action="store_true", help="every episode starts from a random fallen pose")
+     args = parser.parse_args()
+ 
+     gs.init(backend=gs.cpu)
+@@ -36,12 +54,12 @@
+     with open(f"logs/{args.exp_name}/cfgs.pkl", "rb") as f:
+         env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
+     reward_cfg["reward_scales"] = {}
+-    if args.cmd is not None:  # [P1.1] a [v, v] range pins the command; the training deadzone still applies
+-        for key, v in zip(("lin_vel_x_range", "lin_vel_y_range", "ang_vel_range"), args.cmd):
+-            command_cfg[key] = [v, v]
+-        command_cfg["rel_standing_envs"] = 0.0
++    if args.cmd is not None:
++        pin_command(parser, args.cmd, command_cfg)
+     if not args.dr:
+         nominal_world(env_cfg, obs_cfg, latency_s=args.latency_ms / 1000.0)  # [P1.2]
++    # [P1.6] fallen starts only with --fallen (before, --dr kept the 15 % fallen starts of a --recovery run)
++    env_cfg["recovery"] = {"init_prob": 1.0, "spawn_height": 0.5} if args.fallen else {}
+ 
+     env = Go2Env(
+         num_envs=1,
+@@ -61,6 +79,7 @@
+         while True:
+             actions = policy(obs_dict)
+             obs_dict, rews, dones, infos = env.step(actions)
++            policy.reset(dones)  # [P1.6] clear the memory of a reset env (recurrent policy; no-op for an MLP)
+ 
+ 
+ if __name__ == "__main__":
+--- a/go2_export.py
++++ b/go2_export.py
+@@ -1,9 +1,11 @@
+ """
+ go2_export.py - [P1.5] Export a trained policy for deployment.
+ 
+-    python go2_export.py -e go2-p15 --ckpt 1000
++    python go2_export.py -e go2-p15 --ckpt 999
+ writes logs/<exp>/exported/
+-    policy.pt         TorchScript actor (mean action): obs [B, 45] -> action [B, 12]
++    policy.pt         TorchScript actor (mean action): obs [B, 45] -> action [B, 12] (46 inputs with the body-height
++                      command). [P1.6] A recurrent actor exports for batch 1 and keeps its memory between calls;
++                      reset() clears it (an MLP export has an empty reset(), so the robot side can always call it).
+     deploy_cfg.json   everything the robot side needs to build the observation and apply the action
+                       (joint order, default pose, scales, gains, command ranges and deadzones, joint limits)
+ go2_fsm.py (robot side) only reads these two files, so the robot computer needs neither Genesis nor rsl_rl.
+@@ -23,15 +25,20 @@
+ import genesis as gs
+ from go2_env import Go2Env, nominal_world
+ 
+-OBS_LAYOUT = ["base_ang_vel*ang_vel_scale (3)", "projected_gravity (3)", "commands*commands_scale (3)",
+-              "(dof_pos-default)*dof_pos_scale (12)", "dof_vel*dof_vel_scale (12)", "last_action (12)"]
++def obs_layout(num_commands):
++    return ["base_ang_vel*ang_vel_scale (3)", "projected_gravity (3)", f"commands*commands_scale ({num_commands})",
++            "(dof_pos-default)*dof_pos_scale (12)", "dof_vel*dof_vel_scale (12)", "last_action (12)"]
+ 
+ 
+-def make_deploy_cfg(env):
++def make_deploy_cfg(env, recurrent=False):
+     """Deployment parameters, read from a built Go2Env (so they are exactly what training used)."""
+     q_lo, q_hi = env.robot.get_dofs_limit(env.motors_dof_idx)
+     q_lo, q_hi = (q_lo[0], q_hi[0]) if q_lo.ndim == 2 else (q_lo, q_hi)
+     cc = env.command_cfg
++    command_ranges = {"lin_vel_x": list(cc["lin_vel_x_range"]), "lin_vel_y": list(cc["lin_vel_y_range"]),
++                      "ang_vel": list(cc["ang_vel_range"])}
++    if env.num_commands >= 4:  # [P1.6] body-height offset dh [m]
++        command_ranges["body_height"] = list(cc["body_height_range"])
+     return {
+         "joint_names": list(env.env_cfg["joint_names"]),  # policy order = action order = observation order
+         "default_joint_angles": env.default_dof_pos.cpu().tolist(),
+@@ -41,14 +48,16 @@
+         "clip_actions": float(env.env_cfg["clip_actions"]),
+         "obs_scales": {k: float(v) for k, v in env.obs_scales.items()},
+         "commands_scale": env.commands_scale.cpu().tolist(),
+-        "command_ranges": {"lin_vel_x": list(cc["lin_vel_x_range"]), "lin_vel_y": list(cc["lin_vel_y_range"]),
+-                           "ang_vel": list(cc["ang_vel_range"])},
++        "num_commands": int(env.num_commands),  # [P1.6] 4 = (vx, vy, wz, dh)
++        "command_ranges": command_ranges,
+         "lin_deadzone": float(cc.get("lin_deadzone", 0.0)),
+         "ang_deadzone": float(cc.get("ang_deadzone", 0.0)),
++        "base_height_target": float(env.reward_cfg["base_height_target"]),  # [P1.6] dh is an offset from it
++        "recurrent": bool(recurrent),  # [P1.6] the exported network keeps a memory (call reset() at each start)
+         "policy_dt": float(env.dt),
+         "torque_limits": env.torque_limits.cpu().tolist(),
+         "dof_pos_limits": torch.stack((q_lo, q_hi), dim=-1).cpu().tolist(),
+-        "obs_layout": OBS_LAYOUT,
++        "obs_layout": obs_layout(env.num_commands),
+     }
+ 
+ 
+@@ -72,7 +81,8 @@
+     runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt"))
+     runner.export_policy_to_jit(out_dir, "policy.pt")
+ 
+-    deploy_cfg = make_deploy_cfg(env)
++    policy = runner.get_inference_policy(device="cpu")
++    deploy_cfg = make_deploy_cfg(env, recurrent=policy.is_recurrent)
+     deploy_cfg["source"] = {
+         "exp_name": args.exp_name, "ckpt": args.ckpt,
+         "genesis": gs.__version__, "rsl_rl": metadata.version("rsl-rl-lib"), "torch": torch.__version__,
+@@ -80,14 +90,21 @@
+     with open(os.path.join(out_dir, "deploy_cfg.json"), "w") as f:
+         json.dump(deploy_cfg, f, indent=2)
+ 
+-    # Check: the exported network gives the same actions as the training policy (deterministic mean)
++    # Check: the exported network gives the same actions as the training policy (deterministic mean).
++    # [P1.6] Over 100 consecutive steps from a reset, one observation at a time, as on the robot: for a recurrent
++    # policy this also checks that the export carries its memory from one call to the next.
+     jit = torch.jit.load(os.path.join(out_dir, "policy.pt"), map_location="cpu")
+-    policy = runner.get_inference_policy(device="cpu")
+-    obs = torch.randn(256, env.obs_buf.shape[-1])
++    obs = torch.randn(100, 1, env.obs_buf.shape[-1])
++    err = 0.0
+     with torch.no_grad():
+-        ref = policy(TensorDict({"policy": obs}, batch_size=[256]))
+-        err = (jit(obs) - ref).abs().max().item()
+-    print(f"exported to {out_dir}: policy.pt, deploy_cfg.json   (max |jit - policy| on random obs: {err:.2e})")
++        policy.reset()
++        jit.reset()
++        for o in obs:
++            ref = policy(TensorDict({"policy": o}, batch_size=[1]))
++            err = max(err, (jit(o) - ref).abs().max().item())
++    kind = "recurrent" if policy.is_recurrent else "MLP"
++    print(f"exported to {out_dir}: policy.pt ({kind}), deploy_cfg.json   "
++          f"(max |jit - policy| over 100 steps: {err:.2e})")
+     if not np.isfinite(err) or err > 1e-4:
+         raise SystemExit("exported network does not match the training policy")
+ 
+--- a/go2_fsm.py
++++ b/go2_fsm.py
+@@ -24,6 +24,8 @@
+ Gamepad (go2_deploy convention, L1 is the modifier for every mode change)
+     L1+R2 stand up    L1+A policy (only once standing)    L1+R1 sit down    L1+Y damping (software e-stop)
+     Policy mode: left stick = forward / sideways speed, right stick (x) = yaw rate (unitree_rl_gym deploy_real).
++    [P1.6] Policies trained with the body-height command: D-pad up / down = body height +-1 cm, clamped to the
++    trained range, back to 0 (nominal height) at each policy start.
+ """
+ 
+ from __future__ import annotations
+@@ -65,6 +67,7 @@
+     sit_hold_s: float = 0.5  # then hold before PASSIVE
+     max_tilt_rad: float = 1.0  # POLICY -> PASSIVE beyond this base tilt
+     joint_limit_margin: float = 0.2  # POLICY -> PASSIVE when a joint reads this far outside its URDF range [rad]
++    height_step: float = 0.01  # [P1.6] body-height change per D-pad press [m]
+     combos: dict = field(default_factory=lambda: dict(COMBOS))
+ 
+ 
+@@ -126,6 +129,8 @@
+ 
+     def reset(self):
+         self.last_action[:] = 0.0
++        if self.net is not None:  # [P1.6] clear the memory of a recurrent export (empty reset() for an MLP)
++            self.net.reset()
+ 
+     def observation(self, gyro, quat_wxyz, q, dq, cmd):
+         s = self.obs_scales
+@@ -176,12 +181,16 @@
+                         max(map(abs, ranges["ang_vel"])))
+         self.deadzones = (policy.cfg["lin_deadzone"], policy.cfg["ang_deadzone"])
+         self.policy_dt = policy.cfg["policy_dt"]
++        # [P1.6] exports from before P1.6 have no "num_commands": 3-command policies
++        self.num_commands = int(policy.cfg.get("num_commands", 3))
++        self.height_range = ranges.get("body_height", (0.0, 0.0))
++        self.height_offset = 0.0  # [m] body-height command dh, D-pad in policy mode
+ 
+         self.mode = Mode.PASSIVE
+         self.t_enter = 0.0
+         self.path = None
+         self.q_target = self.stand_pose.copy()
+-        self.command = np.zeros(3)
++        self.command = np.zeros(self.num_commands)
+         self.next_policy_t = 0.0
+         self.policy_running = False
+         self.prev_buttons = frozenset()
+@@ -240,6 +249,15 @@
+                 self._log(t, "L1+A ignored: stand-up not finished")
+         elif self._combo("sit_down", buttons) and self.mode in (Mode.STAND_UP, Mode.POLICY):
+             self._enter(Mode.SIT_DOWN, t, q, "L1+R1")
++        if self.mode is Mode.POLICY and self.num_commands >= 4:  # [P1.6] D-pad: body height, one step per press
++            step = (("up" in buttons and "up" not in self.prev_buttons)
++                    - ("down" in buttons and "down" not in self.prev_buttons)) * self.cfg.height_step
++            if step:
++                lo, hi = self.height_range
++                new = float(np.clip(self.height_offset + step, lo, hi))
++                if new != self.height_offset:
++                    self.height_offset = new
++                    self._log(t, f"body height offset {100 * new:+.0f} cm")
+         self.prev_buttons = buttons
+ 
+         # 2) automatic transitions
+@@ -268,13 +286,16 @@
+             kd = self.stand_kd + ramp * (self.policy_kd - self.stand_kd)
+             return self.stand_pose.copy(), zeros, kp, kd, zeros
+         if not self.policy_running:
+-            self.policy.reset()  # last action = 0, as at the start of a training episode
++            self.policy.reset()  # last action = 0 (and empty memory), as at the start of a training episode
++            self.height_offset = 0.0  # [P1.6] nominal height at each policy start
+             self.policy_running, self.next_policy_t = True, t
+             self._log(t, "policy running")
+         if t >= self.next_policy_t - 1e-9:
+             lx, ly, rx, _ = sticks
+-            self.command = sticks_to_command(ly, -lx, -rx, max_cmd=self.max_cmd, lin_deadzone=self.deadzones[0],
+-                                             ang_deadzone=self.deadzones[1])
++            velocity = sticks_to_command(ly, -lx, -rx, max_cmd=self.max_cmd, lin_deadzone=self.deadzones[0],
++                                         ang_deadzone=self.deadzones[1])
++            # [P1.6] (vx, vy, wz), plus dh for policies trained with the body-height command
++            self.command = np.append(velocity, self.height_offset) if self.num_commands >= 4 else velocity
+             self.q_target = self.policy.step(gyro, quat_wxyz, q, dq, self.command)
+             self.next_policy_t += self.policy_dt
+             if self.next_policy_t < t:  # the control loop fell behind: do not try to catch up
+--- a/go2_fsm_sim.py
++++ b/go2_fsm_sim.py
+@@ -2,7 +2,8 @@
+ go2_fsm_sim.py - [P1.5] Genesis test bench for the deploy-side state machine (go2_fsm.py).
+ 
+ The robot starts lying in damping mode, then a scripted gamepad sequence runs:
+-    full  (default)  L1+R2 stand up -> L1+A policy -> left stick forward -> L1+R1 sit down
++    full  (default)  L1+R2 stand up -> L1+A policy -> left stick forward -> D-pad down x3 (body height -3 cm, for
++                     policies trained with the body-height command; others ignore it) -> L1+R1 sit down
+     estop            L1+R2 stand up -> L1+A policy -> L1+Y damping (software e-stop) while standing
+ The bench applies the state machine's motor commands at the physics rate, as the motor drivers would:
+     tau = kp (q_des - q) + kd (dq_des - dq) + tau_ff, clipped at the Go2 torque limits.
+@@ -33,7 +34,9 @@
+ 
+ # Gamepad script: (time [s], buttons, held for PRESS_S) and (start, end, sticks (lx, ly, rx, ry))
+ SCENARIOS = {
+-    "full": {"buttons": [(1.0, ("L1", "R2")), (4.0, ("L1", "A")), (10.0, ("L1", "R1"))],
++    "full": {"buttons": [(1.0, ("L1", "R2")), (4.0, ("L1", "A")),
++                         (8.6, ("down",)), (8.75, ("down",)), (8.9, ("down",)),  # [P1.6] body height -3 cm
++                         (10.0, ("L1", "R1"))],
+              "sticks": [(6.0, 8.5, (0.0, 0.6, 0.0, 0.0))], "end": 13.5},
+     "estop": {"buttons": [(1.0, ("L1", "R2")), (4.0, ("L1", "A")), (6.5, ("L1", "Y"))],
+               "sticks": [], "end": 9.0},
+--- a/go2_metrics.py
++++ b/go2_metrics.py
+@@ -9,6 +9,10 @@
+     python go2_metrics.py -e go2-walking --ckpt 100
+     python go2_metrics.py -e slip-aware  --ckpt 1500
+ Put it next to go2_env.py (it imports Go2Env from there).
++A run of N iterations saves model_0.pt, model_100.pt, ... and model_<N-1>.pt (rsl_rl counts from 0).
++[P1.6] Runs trained with the body-height command get the HEIGHT_GRID bins and a dh column.
++[P1.6] --tag dr writes metrics_ckpt<N>_seed<S>_dr.csv (and .npz, .png), so a second evaluation of the same
++checkpoint (here with --keep_dr) does not overwrite the first. go2_compare.py compares the CSV files.
+ """
+ 
+ import argparse
+@@ -42,6 +46,14 @@
+     (0.0, 0.0, -0.5),
+     (0.5, 0.0, 0.5),
+ ]
++# [P1.6] runs trained with the body-height command (4 commands): COMMAND_GRID at dh = 0, plus these bins
++# (vx, vy, wz, dh [m]). Keep them inside the run's body_height_range (the ood column flags them otherwise).
++HEIGHT_GRID = [
++    (0.0, 0.0, 0.0, -0.06),
++    (0.0, 0.0, 0.0, 0.03),
++    (0.5, 0.0, 0.0, -0.06),
++    (0.5, 0.0, 0.0, 0.03),
++]
+ 
+ FEET = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]   # order of the foot axis in all foot signals
+ 
+@@ -115,7 +127,7 @@
+ 
+     # Raw signals, one entry per measured control step -> stacked to [T, N, ...]
+     log = {
+-        "cmd": [],       # [T, N, 3]  commanded (vx, vy, wz)
++        "cmd": [],       # [T, N, 3]  commanded (vx, vy, wz)  ([T, N, 4] with dh, P1.6)
+         "lin_vel": [],   # [T, N, 3]  base linear velocity, base frame
+         "ang_vel": [],   # [T, N, 3]  base angular velocity, base frame
+         "valid": [],     # [T, N]     True if the env has not fallen yet
+@@ -137,6 +149,7 @@
+         for t in range(n_warmup + n_measure):
+             actions = policy(obs)
+             obs, _, dones, extras = env.step(actions)
++            policy.reset(dones)  # [P1.6] clear the memory of a reset env (recurrent policy; no-op for an MLP)
+ 
+             # A reset that is not a timeout is a fall (pitch/roll limit or solver error).
+             # episode_length_s is set longer than the run, so timeouts should not happen.
+@@ -201,6 +214,14 @@
+     }
+ 
+ 
++def m_height(rec, dt):
++    """[P1.6] Base height and its error against the commanded height: base_height_target + dh (dh = 0 for runs
++    without the body-height command, so z_err then measures against base_height_target)."""
++    v = rec["valid"]
++    z = rec["base_pos"][..., 2]                                                     # [T, N]
++    return {"z[m]": masked_mean(z, v), "z_err[cm]": 100.0 * masked_mean((z - rec["z_target"]).abs(), v)}
++
++
+ HF_CUTOFF_HZ = 10.0  # gait ~1-3 Hz + first harmonics stay below this; above = jitter
+ 
+ 
+@@ -385,7 +406,11 @@
+     fig, axes = plt.subplots(1, 2, figsize=(9.5, 3.6))
+     missing = []
+     for k, cmd in enumerate(SPECTRA_BINS):
+-        rows = torch.nonzero((grid - torch.tensor(cmd)).abs().sum(-1) < 1e-6).flatten()
++        # [P1.6] match (vx, vy, wz) at dh = 0 when the grid has a 4th (body-height) column
++        same = (grid[:, :3] - torch.tensor(cmd)).abs().sum(-1) < 1e-6
++        if grid.shape[1] > 3:
++            same &= grid[:, 3].abs() < 1e-6
++        rows = torch.nonzero(same).flatten()
+         if rows.numel() == 0:
+             continue
+         envs = (bin_id == rows[0]) & never_fell
+@@ -440,8 +465,10 @@
+             ax.text(0.5, 0.5, "all envs fell", transform=ax.transAxes, ha="center", va="center", fontsize=8)
+         ax.set_yticks(range(4), [f.split("_")[0] for f in FEET], fontsize=7)
+         ax.set_ylim(3.6, -0.6)
+-        ax.set_ylabel(f"vx {grid[b, 0]:+.2f}\nvy {grid[b, 1]:+.2f}\nwz {grid[b, 2]:+.2f}",
+-                      rotation=0, ha="right", va="center", fontsize=7)
++        label = f"vx {grid[b, 0]:+.2f}\nvy {grid[b, 1]:+.2f}\nwz {grid[b, 2]:+.2f}"
++        if grid.shape[1] > 3:  # [P1.6]
++            label += f"\ndh {grid[b, 3]:+.2f}"
++        ax.set_ylabel(label, rotation=0, ha="right", va="center", fontsize=7)
+         ax.tick_params(axis="x", labelsize=7)
+         for side in ("top", "right", "left"):
+             ax.spines[side].set_visible(False)
+@@ -510,7 +537,7 @@
+ 
+ # One printed table per entry. Add new metric functions to the right table.
+ TABLES = {
+-    "Tracking & stability": [m_tracking, m_measured],
++    "Tracking & stability": [m_tracking, m_measured, m_height],   # [P1.6] + m_height
+     "Smoothness": [m_action_smoothness, m_torque_smoothness],   # [P1.4] split from "Smoothness & actuation"
+     "Actuation limits": [m_torque_limits],
+     "Energy": [m_cot],
+@@ -547,12 +574,15 @@
+     """Columns shared by every table: the command, the OOD flag, the falls."""
+     fell = rec["fall_step"] >= 0
+     bin_id = bin_id.cpu()
+-    return [
+-        {"vx": grid[b, 0].item(), "vy": grid[b, 1].item(), "wz": grid[b, 2].item(),
+-         "ood": "*" if ood[b] else "",
+-         "falls": f"{int(fell[bin_id == b].sum())}/{int((bin_id == b).sum())}"}
+-        for b in range(len(grid))
+-    ]
++    header = []
++    for b in range(len(grid)):
++        h = {"vx": grid[b, 0].item(), "vy": grid[b, 1].item(), "wz": grid[b, 2].item()}
++        if grid.shape[1] > 3:  # [P1.6] body-height offset
++            h["dh"] = grid[b, 3].item()
++        h["ood"] = "*" if ood[b] else ""
++        h["falls"] = f"{int(fell[bin_id == b].sum())}/{int((bin_id == b).sum())}"
++        header.append(h)
++    return header
+ 
+ 
+ def print_table(rows, title):
+@@ -570,11 +600,12 @@
+     stats, table_cols = compute_stats(rec, bin_id, len(grid), dt)
+     header = bin_header(rec, bin_id, grid, ood)
+ 
++    cmd_cols = [k for k in ("vx", "vy", "wz", "dh") if k in header[0]]  # [P1.6] dh for 4-command runs
+     print(f"\n=== {title} ===")
+     for i, (tname, names) in enumerate(table_cols.items()):
+         rows = []
+         for b, h in enumerate(header):
+-            row = dict(h) if i == 0 else {k: h[k] for k in ("vx", "vy", "wz", "ood")}
++            row = dict(h) if i == 0 else {k: h[k] for k in (*cmd_cols, "ood")}
+             for n in names:
+                 m, s = stats[n][0][b], stats[n][1][b]
+                 row[n] = f"{m:.3f} ± {s:.3f}" if np.isfinite(m) else "n/a"
+@@ -586,9 +617,9 @@
+     with open(csv_path, "w", newline="") as f:
+         w = csv.writer(f)
+         names = list(stats.keys())
+-        w.writerow(["vx", "vy", "wz", "ood", "falls"] + [f"{n}_{s}" for n in names for s in ("mean", "std")])
++        w.writerow(cmd_cols + ["ood", "falls"] + [f"{n}_{s}" for n in names for s in ("mean", "std")])
+         for b, h in enumerate(header):
+-            w.writerow([h["vx"], h["vy"], h["wz"], h["ood"] == "*", h["falls"]]
++            w.writerow([h[c] for c in cmd_cols] + [h["ood"] == "*", h["falls"]]
+                        + [f"{stats[n][k][b]:.6g}" for n in names for k in (0, 1)])
+     print(f"table saved to {csv_path}")
+ 
+@@ -642,6 +673,9 @@
+                    help="keep the run's domain randomization, noise and pushes (robustness test)")
+     p.add_argument("--latency_ms", type=float, default=20.0, help="action latency in the nominal world")
+     p.add_argument("--fall_deg", type=float, default=10.0, help="roll/pitch beyond this counts as a fall")
++    # [P1.6] e.g. --tag dr for a --keep_dr evaluation: metrics_ckpt999_seed0_dr.csv, so it does not overwrite the
++    # nominal one of the same checkpoint and seed
++    p.add_argument("--tag", type=str, default="", help="suffix of the output file names")
+     args = p.parse_args()
+ 
+     log_dir = args.log_dir or os.path.join("logs", args.exp_name)
+@@ -660,6 +694,7 @@
+     reward_cfg["reward_scales"] = {}                       # no reward computation needed
+     if not args.keep_dr:                                   # [P1.2]
+         nominal_world(env_cfg, obs_cfg, latency_s=args.latency_ms / 1000.0)
++    env_cfg["recovery"] = {}  # [P1.6] fix: no fallen starts, also with --keep_dr (P1.5 --recovery runs had 15 %)
+     env_cfg["termination_if_roll_greater_than"] = args.fall_deg    # [P1.2] same fall criterion for every run
+     env_cfg["termination_if_pitch_greater_than"] = args.fall_deg
+ 
+@@ -669,7 +704,12 @@
+     env_cfg["links_to_keep"] = FEET                        # keep foot links (needs go2_env.py edit)
+ 
+     # Env layout: bins repeated `reps` times -> env i belongs to bin bin_id[i]
+-    grid = torch.tensor(COMMAND_GRID, dtype=gs.tc_float, device=gs.device)
++    # [P1.6] runs trained with the body-height command: COMMAND_GRID at dh = 0, then HEIGHT_GRID
++    if command_cfg["num_commands"] >= 4:
++        grid_rows = [c + (0.0,) for c in COMMAND_GRID] + list(HEIGHT_GRID)
++    else:
++        grid_rows = COMMAND_GRID
++    grid = torch.tensor(grid_rows, dtype=gs.tc_float, device=gs.device)
+     n_bins = grid.shape[0]
+     bin_id = torch.arange(n_bins, device=gs.device).repeat_interleave(args.reps)
+     num_envs = n_bins * args.reps
+@@ -692,28 +732,30 @@
+     n_measure = round(args.measure_s / env.dt)
+     rec = run_rollout(env, policy, n_warmup, n_measure)
+     rec.update(get_joint_limits(env))
++    # [P1.6] commanded base height [T, N]: base_height_target + dh (dh = 0 without the body-height command)
++    z_nominal = float(reward_cfg["base_height_target"])
++    rec["z_target"] = z_nominal + (rec["cmd"][..., 3] if rec["cmd"].shape[-1] > 3 else 0.0 * rec["cmd"][..., 0])
+ 
+     world = "training DR" if args.keep_dr else f"nominal world, latency {args.latency_ms:.0f} ms"  # [P1.2]
+     title = (f"{args.exp_name} | ckpt {args.ckpt} | seed {args.seed} | init_noise {args.init_noise} rad | "
+              f"{num_envs} envs | {args.measure_s:.0f} s | {world} | fall > {args.fall_deg:.0f} deg")
+-    csv_path = os.path.join(log_dir, f"metrics_ckpt{args.ckpt}_seed{args.seed}.csv")
++    name = f"ckpt{args.ckpt}_seed{args.seed}" + (f"_{args.tag}" if args.tag else "")  # [P1.6] --tag
++    csv_path = os.path.join(log_dir, f"metrics_{name}.csv")
+     # Genesis makes CUDA the default device for new tensors; all metrics work on the
+     # CPU copies of the recordings, so new tensors must be created on the CPU too.
+     with torch.device("cpu"):
+         report(rec, bin_id, grid.cpu(), ood, env.dt, title, csv_path)
+-        plot_gait(rec, bin_id, grid.cpu(), env.dt,
+-                  os.path.join(log_dir, f"gait_ckpt{args.ckpt}_seed{args.seed}.png"))
+-        plot_spectra(rec, bin_id, grid.cpu(), env.dt,                                     # [P1.4]
+-                     os.path.join(log_dir, f"spectra_ckpt{args.ckpt}_seed{args.seed}.png"))
++        plot_gait(rec, bin_id, grid.cpu(), env.dt, os.path.join(log_dir, f"gait_{name}.png"))
++        plot_spectra(rec, bin_id, grid.cpu(), env.dt, os.path.join(log_dir, f"spectra_{name}.png"))  # [P1.4]
+ 
+     # Determinism check: two runs with the same seed must print the same number.
+     print(f"checksum: {rec['lin_vel'].double().sum().item():.10e}")
+ 
+-    out = os.path.join(log_dir, f"metrics_ckpt{args.ckpt}_seed{args.seed}.npz")
++    out = os.path.join(log_dir, f"metrics_{name}.npz")
+     np.savez(out, bin_id=bin_id.cpu().numpy(), grid=grid.cpu().numpy(),
+              **{k: v.numpy() for k, v in rec.items()})
+     print(f"raw data saved to {out}")
+ 
+ 
+ if __name__ == "__main__":
+-    main()
+\ No newline at end of file
++    main()
+\ No newline at end of file
+--- /dev/null
++++ b/go2_teleop.py
+@@ -0,0 +1,266 @@
++"""
++go2_teleop.py - [P1.6] Drive a trained policy with the keyboard in the Genesis viewer, optionally recording a video.
++
++    python go2_teleop.py -e go2-p16h --ckpt 999                    # click the viewer window, then use the keys
++    python go2_teleop.py -e go2-p16h --ckpt 999 --dr               # with the training randomization and pushes
++    python go2_teleop.py -e go2-p16h --ckpt 999 --cmd 0.3 0 0 -0.03   # start from this command
++    python go2_teleop.py -e go2-p16h --ckpt 999 --record drive.mp4    # + video from a camera following the robot
++    PYOPENGL_PLATFORM=egl python go2_teleop.py -e go2-p16h --ckpt 999 --headless --cmd 0.5 0 0 -0.04 \\
++        --duration 10 --record crouch.mp4                          # no display: fixed command, video only
++
++Keys (click the viewer window first; the list is also printed at start):
++    Up / Down      vx +-0.1 m/s
++    Left / Right   vy +-0.1 m/s (left = +)
++    Q / E          wz +-0.1 rad/s (Q = turn left)
++    T / G          dh +-1 cm (body height; runs trained with --height-cmd)
++    Space          vx = vy = wz = 0 (keeps dh)
++    Backspace      reset the robot (and the policy's memory)
++Genesis' own viewer keys keep working (A C D F H I L O P V W Z F11; I shows them in the window). Close the window or
++press Ctrl+C in the terminal to stop.
++
++The command is clamped to the run's training ranges, then the training deadzone applies, as on the robot
++(go2_commands.py): the terminal shows both. It is pinned inside the env (never resampled, also after a fall), and the
++observation is recomputed as soon as it changes, so the policy sees a key press at its next step.
++Nominal world by default (no randomization, no noise, no pushes, 20 ms latency), no time-out resets, never a fallen
++start (also with --dr and a run trained with --recovery). A fall resets the robot and the policy's memory; the fall
++count is printed at the end.
++"""
++
++import argparse
++import os
++import pickle
++import threading
++
++import torch
++
++import genesis as gs
++from genesis.vis.keybindings import Key, KeyAction, Keybind
++from rsl_rl.runners import OnPolicyRunner
++
++from go2_commands import apply_command_deadzone
++from go2_env import Go2Env, nominal_world
++
++LIN_STEP, ANG_STEP, HEIGHT_STEP = 0.1, 0.1, 0.01  # change per key press [m/s, rad/s, m]
++CHASE_OFFSET = (-1.6, -1.2, 0.9)  # [m] camera position relative to the robot (viewer and recording)
++FOLLOW_SMOOTHING = 0.9  # camera low-pass per physics step: closer to 1 = smoother, more lag
++NAMES = ("vx", "vy", "wz", "dh")
++
++
++def key_help(height_cmd):
++    """The key list printed at start (values from the constants above)."""
++    t_g = f"dh +-{100 * HEIGHT_STEP:.0f} cm" if height_cmd else "unused (this run was trained without --height-cmd)"
++    return "\n".join((
++        "Keys (click the viewer window first):",
++        f"    Up / Down      vx +-{LIN_STEP} m/s",
++        f"    Left / Right   vy +-{LIN_STEP} m/s (left = +)",
++        f"    Q / E          wz +-{ANG_STEP} rad/s (Q = turn left)",
++        f"    T / G          {t_g}",
++        "    Space          vx = vy = wz = 0 (keeps dh)",
++        "    Backspace      reset the robot (and the policy's memory)",
++        "Close the window or press Ctrl+C here to stop.",
++    ))
++
++
++class KeyboardCommand:
++    """Command setpoint changed by key presses (from the viewer thread), read by the control loop."""
++
++    def __init__(self, command_cfg, initial=None):
++        self.n = command_cfg["num_commands"]
++        ranges = [command_cfg["lin_vel_x_range"], command_cfg["lin_vel_y_range"], command_cfg["ang_vel_range"]]
++        if self.n >= 4:
++            ranges.append(command_cfg["body_height_range"])
++        self.lo = [float(min(r)) for r in ranges]
++        self.hi = [float(max(r)) for r in ranges]
++        self.deadzones = (command_cfg.get("lin_deadzone", 0.0), command_cfg.get("ang_deadzone", 0.0))
++        self.setpoint = [0.0] * self.n
++        self.notes = []  # messages for the terminal (e.g. a key this run does not use)
++        for i, v in enumerate((initial or [])[: self.n]):
++            self.setpoint[i] = self._clamp(i, v)
++            if self.setpoint[i] != round(v, 6):
++                self.notes.append(f"--cmd {NAMES[i]} {v:g} is outside the training range: clamped to "
++                                  f"{self.setpoint[i]:g}")
++        self.lock = threading.Lock()
++        self.changed = True  # the env takes the first command at start
++        self.reset_requested = False
++
++    def _clamp(self, i, v):
++        return round(min(max(v, self.lo[i]), self.hi[i]), 6)
++
++    def nudge(self, i, step):
++        with self.lock:
++            if i >= self.n:
++                self.notes.append("T / G do nothing: this run was trained without --height-cmd")
++                return
++            value = self._clamp(i, self.setpoint[i] + step)
++            if value == self.setpoint[i]:
++                limit = f"{100 * value:+.0f} cm" if i == 3 else f"{value:+.2f}"
++                self.notes.append(f"{NAMES[i]} is at its training limit ({limit})")
++                return
++            self.setpoint[i] = value
++            self.changed = True
++
++    def stop(self):
++        with self.lock:
++            self.setpoint[:3] = [0.0, 0.0, 0.0]
++            self.changed = True
++
++    def request_reset(self):
++        with self.lock:
++            self.reset_requested = True
++
++    def take(self):
++        """(command changed?, reset requested?, notes) since the last call; clears them."""
++        with self.lock:
++            out = (self.changed, self.reset_requested, self.notes)
++            self.changed, self.reset_requested, self.notes = False, False, []
++        return out
++
++    def policy_command(self):
++        """What the policy receives: the setpoint after the training deadzone."""
++        with self.lock:
++            setpoint = list(self.setpoint)
++        return self._deadzone(setpoint)
++
++    def _deadzone(self, setpoint):
++        return apply_command_deadzone(torch.tensor(setpoint, dtype=torch.float32), *self.deadzones)
++
++    def status(self):
++        def fmt(values):
++            parts = [f"{name} {v + 0.0:+.2f}" for name, v in zip(NAMES[:3], values[:3])]  # + 0.0: no "-0.00"
++            if self.n >= 4:
++                parts.append(f"dh {100 * values[3] + 0.0:+.0f} cm")
++            return " ".join(parts)
++
++        with self.lock:
++            setpoint = list(self.setpoint)
++        return f"set: {fmt(setpoint)}  -> policy gets: {fmt(self._deadzone(setpoint).tolist())}"
++
++    def keybinds(self):
++        press = KeyAction.PRESS
++        return [
++            Keybind("teleop_vx_up", Key.UP, press, callback=self.nudge, args=(0, LIN_STEP)),
++            Keybind("teleop_vx_down", Key.DOWN, press, callback=self.nudge, args=(0, -LIN_STEP)),
++            Keybind("teleop_vy_left", Key.LEFT, press, callback=self.nudge, args=(1, LIN_STEP)),
++            Keybind("teleop_vy_right", Key.RIGHT, press, callback=self.nudge, args=(1, -LIN_STEP)),
++            Keybind("teleop_turn_left", Key.Q, press, callback=self.nudge, args=(2, ANG_STEP)),
++            Keybind("teleop_turn_right", Key.E, press, callback=self.nudge, args=(2, -ANG_STEP)),
++            Keybind("teleop_height_up", Key.T, press, callback=self.nudge, args=(3, HEIGHT_STEP)),
++            Keybind("teleop_height_down", Key.G, press, callback=self.nudge, args=(3, -HEIGHT_STEP)),
++            Keybind("teleop_stop", Key.SPACE, press, callback=self.stop),
++            Keybind("teleop_reset", Key.BACKSPACE, press, callback=self.request_reset),
++        ]
++
++
++class TeleopGo2Env(Go2Env):
++    """Go2Env with the command pinned to the keyboard setpoint, and an optional recording camera."""
++
++    def __init__(self, teleop, *args, record_res=None, **kwargs):
++        self.teleop = teleop  # before super().__init__(), which resets and resamples the command
++        self.record_res = record_res
++        self.cam = None
++        super().__init__(*args, **kwargs)
++
++    def _add_extra_entities(self):
++        if self.record_res is not None:
++            base = self.env_cfg["base_init_pos"]
++            self.cam = self.scene.add_camera(
++                res=tuple(self.record_res),
++                pos=tuple(b + o for b, o in zip(base, CHASE_OFFSET)),
++                lookat=tuple(base),
++                fov=40,
++                GUI=False,
++            )
++
++    def _resample_commands(self, envs_idx):
++        self.commands[:] = self.teleop.policy_command().to(self.device)
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument("-e", "--exp_name", type=str, default="go2-walking")
++    p.add_argument("--ckpt", type=int, required=True, help="checkpoint (last of a 1000-iteration run: 999)")
++    p.add_argument("--log_dir", type=str, default=None, help="default: logs/<exp_name>")
++    p.add_argument("--cmd", type=float, nargs="+", metavar="V", default=None, help="initial VX VY WZ [DH]")
++    p.add_argument("--dr", action="store_true", help="keep the training randomization, noise and pushes")
++    p.add_argument("--latency_ms", type=float, default=20.0, help="action latency in the nominal world")
++    p.add_argument("--record", type=str, default=None, help="video file (.mp4) from a camera following the robot")
++    p.add_argument("--record_res", type=int, nargs=2, default=(1280, 720), metavar=("W", "H"))
++    p.add_argument("--headless", action="store_true", help="no viewer, no keys: the --cmd command for --duration s")
++    p.add_argument("--duration", type=float, default=None, help="stop after this many seconds of simulated time")
++    p.add_argument("--gpu", action="store_true", help="GPU backend (default: CPU, enough for one robot)")
++    args = p.parse_args()
++    if args.headless and args.duration is None:
++        p.error("--headless needs --duration")
++
++    log_dir = args.log_dir or os.path.join("logs", args.exp_name)
++    with open(os.path.join(log_dir, "cfgs.pkl"), "rb") as f:
++        env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
++    if args.cmd is not None and len(args.cmd) not in (3, 4):
++        p.error("--cmd takes VX VY WZ, or VX VY WZ DH for runs trained with --height-cmd")
++    if args.cmd is not None and len(args.cmd) == 4 and command_cfg["num_commands"] < 4:
++        p.error("--cmd: this run takes VX VY WZ (no DH: it was trained without --height-cmd)")
++
++    gs.init(backend=gs.gpu if args.gpu else gs.cpu, logging_level="warning")
++    reward_cfg["reward_scales"] = {}
++    if not args.dr:
++        nominal_world(env_cfg, obs_cfg, latency_s=args.latency_ms / 1000.0)
++    env_cfg["recovery"] = {}  # always start standing ([P1.5] fallen starts off, also with --dr)
++    env_cfg.update(episode_length_s=1e6, viewer_camera_pos=CHASE_OFFSET,
++                   viewer_camera_lookat=tuple(env_cfg["base_init_pos"]))
++    teleop = KeyboardCommand(command_cfg, args.cmd)
++    env = TeleopGo2Env(teleop, num_envs=1, env_cfg=env_cfg, obs_cfg=obs_cfg, reward_cfg=reward_cfg,
++                       command_cfg=command_cfg, show_viewer=not args.headless,
++                       record_res=args.record_res if args.record else None)
++
++    runner = OnPolicyRunner(env, train_cfg, log_dir=None, device=gs.device)
++    runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt"))
++    policy = runner.get_inference_policy(device=gs.device)
++
++    viewer = None if args.headless else env.scene.viewer
++    if viewer is not None:
++        viewer.register_keybinds(*teleop.keybinds())
++        viewer.follow_entity(env.robot, smoothing=FOLLOW_SMOOTHING)
++        print(key_help(teleop.n >= 4))
++    if env.cam is not None:
++        env.cam.follow_entity(env.robot, smoothing=FOLLOW_SMOOTHING)
++        env.cam.start_recording(save_to_filename=args.record, fps=round(1.0 / env.dt))  # one frame per policy step
++
++    falls, steps = 0, 0
++    max_steps = None if args.duration is None else round(args.duration / env.dt)
++    obs = env.reset()
++    try:
++        with torch.no_grad():
++            while max_steps is None or steps < max_steps:
++                if viewer is not None and not viewer.is_alive():
++                    break
++                changed, reset, notes = teleop.take()
++                for note in dict.fromkeys(notes):
++                    print(note)
++                if reset:
++                    env.reset()  # pose, buffers; the command stays pinned
++                    policy.reset()
++                if changed or reset:
++                    env.commands[:] = teleop.policy_command().to(env.device)
++                    env._update_observation()  # the next action already uses the new command
++                    obs = env.get_observations()
++                    print(teleop.status() + ("  (robot reset)" if reset else ""))
++                actions = policy(obs)
++                obs, _, dones, extras = env.step(actions)
++                policy.reset(dones)  # clear the memory of a reset env (recurrent policy; no-op for an MLP)
++                falls += int((dones & (extras["time_outs"] == 0)).sum())
++                steps += 1
++    except KeyboardInterrupt:
++        pass
++    except Exception:
++        # closing the viewer window stops the scene with an exception ("Viewer closed."): that is a normal way out
++        if viewer is None or viewer.is_alive():
++            raise
++    finally:
++        if env.cam is not None:
++            env.cam.stop_recording()  # closes the video file
++            print(f"video saved to {args.record}")
++        print(f"{steps * env.dt:.1f} s simulated, {falls} fall(s)")
++
++
++if __name__ == "__main__":
++    main()
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -162,6 +162,9 @@
+             "ang_vel": 0.25,
+             "dof_pos": 1.0,
+             "dof_vel": 0.05,
++            # [P1.6] body-height command (used with --height-cmd only): dh x 5 -> about +-0.4, within the span of the
++            # other command entries (+-0.25 to +-2). walk-these-ways scales its body_height_cmd by 2.
++            "body_height": 5.0,
+         },
+         # [P1.2] observation noise, legged_gym noise_scales (physical units: rad/s, -, rad, rad/s)
+         "add_noise": True,
+@@ -205,7 +208,11 @@
+         },
+     }
+     command_cfg = {
+-        "num_commands": 3,
++        "num_commands": 3,  # [P1.6] 4 with --height-cmd: (vx, vy, wz, dh)
++        # [P1.6] body-height offset dh from base_height_target [m], sampled with --height-cmd only (walk-these-ways
++        # body_height_cmd). Reach with the feet at their default positions (IK): front calf at its soft limit at
++        # +6.9 cm, at its URDF limit at +7.8 cm; -12 cm still leaves the calf 0.5 rad inside its range.
++        "body_height_range": [-0.08, 0.04],
+         # [P1.1] a real command space (was a single command, vx = 0.5); covers the go2_metrics.py grid
+         "lin_vel_x_range": [-1.0, 1.0],
+         "lin_vel_y_range": [-0.5, 0.5],
+@@ -226,7 +233,8 @@
+     )
+     parser.add_argument("-b", "--num-envs", type=int, default=4096, help="Number of parallel environments")
+     # [P1.1] 101 iterations were enough for one fixed command; a 3-D command space with standing needs ~10x more
+-    parser.add_argument("--max-iterations", type=int, default=1000, help="Number of learning iterations")
++    parser.add_argument("--max-iterations", type=int, default=1000,
++                        help="learning iterations (rsl_rl counts from 0: the last checkpoint is model_<N-1>.pt)")
+     parser.add_argument("--seed", type=int, default=1, help="Random seed")
+     parser.add_argument("--cpu", action="store_true", help="CPU backend, for quick smoke tests only")
+     # [P1.4] smoothness regularizers on the policy network (go2_smooth_ppo.py); all off by default. Use them only if
+@@ -236,7 +244,17 @@
+     parser.add_argument("--caps-s", type=float, default=0.0, help="CAPS spatial coefficient (paper, Ant: 0.5)")
+     # [P1.5] learned recovery (optional, W12): 15 % of the episodes start fallen, with recovery rewards
+     parser.add_argument("--recovery", action="store_true", help="train fall recovery as well")
++    # [P1.6] body-height command and recurrent policy, both off by default (then a run is a P1.5 run)
++    parser.add_argument("--height-cmd", action="store_true", help="4th command: body-height offset dh [m]")
++    parser.add_argument("--rnn", choices=("lstm", "gru"), default=None, help="recurrent actor and critic (RNNModel)")
++    parser.add_argument("--rnn-hidden", type=int, default=256, help="RNN hidden size (rsl_rl's default: 256)")
++    parser.add_argument("--steps-per-env", type=int, default=None,
++                        help="rollout length per env and iteration (default: 24 for an MLP, 48 with --rnn)")
+     args = parser.parse_args()
++    if args.rnn and (args.lcp > 0 or args.caps_t > 0 or args.caps_s > 0):
++        # go2_smooth_ppo.py evaluates the policy on flat mini-batches of single observations; a recurrent version
++        # would need rsl_rl's padded-sequence mini-batches with their hidden states
++        parser.error("--lcp / --caps-* are implemented for MLP policies only (go2_smooth_ppo.py): drop --rnn or them")
+ 
+     log_dir = f"logs/{args.exp_name}"
+     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
+@@ -244,6 +262,20 @@
+     if args.recovery:  # [P1.5] weights: my starting point, to be tuned (MetalHead uses AMP + task rewards instead)
+         env_cfg["recovery"]["init_prob"] = 0.15
+         reward_cfg["reward_scales"].update({"rec_upright": 1.0, "rec_height": 1.0, "rec_pose": 0.5})
++    if args.height_cmd:  # [P1.6] dh sampled in command_cfg["body_height_range"]
++        command_cfg["num_commands"] = 4
++    if args.rnn:  # [P1.6] rsl_rl RNNModel: one RNN layer on the observation, then the same MLP; one memory each
++        rnn_num_layers = 1
++        for model in ("actor", "critic"):
++            train_cfg[model].update(
++                {"class_name": "RNNModel", "rnn_type": args.rnn, "rnn_hidden_dim": args.rnn_hidden,
++                 "rnn_num_layers": rnn_num_layers}
++            )
++    # [P1.6] rsl_rl trains the RNN by backpropagation through time cut at the rollout: a mini-batch trajectory starts
++    # from the memory saved during the rollout and lasts at most num_steps_per_env steps (it also ends at a reset).
++    # So the rollout length bounds how far back a gradient reaches: 48 steps = 0.96 s.
++    if args.steps_per_env is not None or args.rnn:
++        train_cfg["num_steps_per_env"] = args.steps_per_env or 48
+     if args.lcp > 0 or args.caps_t > 0 or args.caps_s > 0:  # [P1.4]
+         train_cfg["algorithm"].update(
+             {
+@@ -252,7 +284,7 @@
+                 "caps_temporal_coef": args.caps_t,
+                 "caps_spatial_coef": args.caps_s,
+                 # CAPS spatial noise: the observation-noise scales of P1.2 (0 on commands and last actions)
+-                "caps_sigma": obs_noise_scales(obs_cfg, env_cfg["num_actions"]),
++                "caps_sigma": obs_noise_scales(obs_cfg, env_cfg["num_actions"], command_cfg["num_commands"]),
+             }
+         )
+ 

@@ -1,0 +1,606 @@
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -37,6 +37,22 @@
+     return (upper - lower) * torch.rand(size=shape, dtype=gs.tc_float, device=gs.device) + lower
+ 
+ 
++def obs_noise_scales(obs_cfg, num_actions):
++    """[P1.2] Half-width of the uniform observation noise, per observation dimension (legged_gym noise_scales, in
++    physical units, scaled like the observation). [P1.4] Moved out of Go2Env so go2_train.py can reuse it."""
++    noise_scales, obs_scales = obs_cfg["noise_scales"], obs_cfg["obs_scales"]
++    segments = (
++        (3, noise_scales["ang_vel"] * obs_scales["ang_vel"]),
++        (3, noise_scales["gravity"]),
++        (3, 0.0),  # commands
++        (num_actions, noise_scales["dof_pos"] * obs_scales["dof_pos"]),
++        (num_actions, noise_scales["dof_vel"] * obs_scales["dof_vel"]),
++        (num_actions, 0.0),  # last actions
++    )
++    n_level = obs_cfg.get("noise_level", 1.0)
++    return [n_level * s for n, s in segments for _ in range(n)]
++
++
+ def nominal_world(env_cfg, obs_cfg, latency_s=None):
+     """[P1.2] Evaluation world: no domain randomization, no observation noise, no pushes, a fixed latency.
+ 
+@@ -209,10 +225,15 @@
+         )
+         self.actions = torch.zeros((self.num_envs, self.num_actions), dtype=gs.tc_float, device=gs.device)
+         self.last_actions = torch.zeros_like(self.actions)
++        self.last_last_actions = torch.zeros_like(self.actions)  # [P1.4] action of two policy steps ago
+         self.dof_pos = torch.empty_like(self.actions)
+         self.dof_vel = torch.empty_like(self.actions)
+         self.last_dof_vel = torch.zeros_like(self.actions)
+         self.torques = torch.zeros_like(self.actions)  # [P1.2] torques applied at the last physics step [Nm]
++        # [P1.4] torques of every physics step of the last policy step, for the 200 Hz analysis in go2_metrics.py
++        self.torques_substeps = torch.zeros(
++            (self.num_envs, self.decimation, self.num_actions), dtype=gs.tc_float, device=gs.device
++        )
+         self.base_pos = torch.empty((self.num_envs, 3), dtype=gs.tc_float, device=gs.device)
+         self.base_quat = torch.empty((self.num_envs, 4), dtype=gs.tc_float, device=gs.device)
+         self.base_euler = torch.empty((self.num_envs, 3), dtype=gs.tc_float, device=gs.device)
+@@ -255,17 +276,9 @@
+         noise_scales = self.obs_cfg.get("noise_scales", {})
+         self.add_noise = bool(self.obs_cfg.get("add_noise", False) and noise_scales)
+         if self.add_noise:
+-            n_level = self.obs_cfg.get("noise_level", 1.0)
+-            segments = (
+-                (3, noise_scales["ang_vel"] * self.obs_scales["ang_vel"]),
+-                (3, noise_scales["gravity"]),
+-                (3, 0.0),  # commands
+-                (self.num_actions, noise_scales["dof_pos"] * self.obs_scales["dof_pos"]),
+-                (self.num_actions, noise_scales["dof_vel"] * self.obs_scales["dof_vel"]),
+-                (self.num_actions, 0.0),  # last actions
+-            )
+-            self.noise_scale_vec = n_level * torch.cat(
+-                [torch.full((n,), s, dtype=gs.tc_float, device=gs.device) for n, s in segments]
++            # [P1.4] computed by obs_noise_scales(), also used for the CAPS sigma in go2_train.py
++            self.noise_scale_vec = torch.tensor(
++                obs_noise_scales(self.obs_cfg, self.num_actions), dtype=gs.tc_float, device=gs.device
+             )
+ 
+         # [P1.2] friction, base mass and CoM: sampled once per env, after build (Genesis DR guide; legged_gym also
+@@ -371,6 +384,7 @@
+             qd = self.robot.get_dofs_velocity(self.motors_dof_idx)
+             torques = self.motor_strength * (self.kp * (target - q) - self.kd * qd)
+             self.torques = torch.clip(torques, -self.torque_limits, self.torque_limits)  # URDF effort limits
++            self.torques_substeps[:, i] = self.torques  # [P1.4]
+             self.robot.control_dofs_force(self.torques[:, self.actions_dof_idx], self.motors_dof_slice)
+             self.scene.step()
+ 
+@@ -425,6 +439,7 @@
+         # update observations
+         self._update_observation()
+ 
++        self.last_last_actions.copy_(self.last_actions)  # [P1.4]
+         self.last_actions.copy_(self.actions)
+         self.last_dof_vel.copy_(self.dof_vel)
+ 
+@@ -461,6 +476,7 @@
+             self.dof_vel.zero_()
+             self.actions.zero_()
+             self.last_actions.zero_()
++            self.last_last_actions.zero_()  # [P1.4]
+             self.last_dof_vel.zero_()
+             self.feet_air_time.zero_()  # [P1.1]
+             self.last_feet_contact.zero_()  # [P1.1]
+@@ -478,6 +494,7 @@
+             self.dof_vel.masked_fill_(envs_idx[:, None], 0.0)
+             self.actions.masked_fill_(envs_idx[:, None], 0.0)
+             self.last_actions.masked_fill_(envs_idx[:, None], 0.0)
++            self.last_last_actions.masked_fill_(envs_idx[:, None], 0.0)  # [P1.4]
+             self.last_dof_vel.masked_fill_(envs_idx[:, None], 0.0)
+             self.feet_air_time.masked_fill_(envs_idx[:, None], 0.0)  # [P1.1]
+             self.last_feet_contact.masked_fill_(envs_idx[:, None], False)  # [P1.1]
+@@ -542,6 +559,15 @@
+         # Penalize changes in actions
+         return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
+ 
++    def _reward_action_smoothness(self):
++        # [P1.4] Second difference of the joint position targets (walk-these-ways action_smoothness_2), i.e. their
++        # discrete acceleration. For a sinusoid, its square is 4 sin^2(pi f dt) times that of the first difference:
++        # 4x at 25 Hz (an action flipping every step), ~1/16 at a 2 Hz gait. So it targets jitter, not the gait.
++        # Masked on the first two steps of an episode, where the zeroed action history is not a real change.
++        second_diff = self.actions - 2.0 * self.last_actions + self.last_last_actions
++        second_diff = second_diff * self.env_cfg["action_scale"]  # actions -> joint targets [rad]
++        return torch.sum(torch.square(second_diff), dim=1) * (self.episode_length_buf > 2)
++
+     def _reward_similar_to_default(self):
+         # Penalize joint poses far away from default pose
+         deviation = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
+--- a/go2_metrics.py
++++ b/go2_metrics.py
+@@ -123,6 +123,7 @@
+         "dof_pos": [],   # [T, N, 12] measured joint positions [rad]
+         "dof_vel": [],   # [T, N, 12] measured joint velocities [rad/s]
+         "torque": [],    # [T, N, 12] torque applied by the PD controller [Nm]
++        "torque_sub": [],  # [T, N, D, 12] torques of the D physics steps of each policy step [Nm]  [P1.4]
+         "base_pos": [],  # [T, N, 3]  base position, world frame [m]
+         "foot_pos": [],  # [T, N, 4, 3] foot sphere centre, world frame [m]
+         "foot_vel": [],  # [T, N, 4, 3] foot-sphere CENTRE velocity, world frame [m/s]
+@@ -154,6 +155,7 @@
+                 log["dof_pos"].append(env.dof_pos.clone())
+                 log["dof_vel"].append(env.dof_vel.clone())
+                 log["torque"].append(env.robot.get_dofs_control_force(env.motors_dof_idx).clone())
++                log["torque_sub"].append(env.torques_substeps.clone())                  # [P1.4]
+ 
+                 # Foot signals: query all links, then keep the 4 feet (works whatever the
+                 # optional link-index arguments are called in your Genesis version).
+@@ -223,7 +225,47 @@
+     hf = 100.0 * ratio.mean(-1)                           # [N]  percent, mean over joints
+     hf[~v.all(0)] = float("nan")
+ 
+-    return {"act_rate[rad/s]": act_rate, f"hf>{HF_CUTOFF_HZ:.0f}Hz[%]": hf}
++    # 3) [P1.4] Target acceleration: second difference, i.e. what the action_smoothness reward penalizes.
++    d2q = (q[2:] - 2.0 * q[1:-1] + q[:-2]) / dt**2        # [T-2, N, 12]  rad/s^2
++    triple_valid = v[2:] & v[1:-1] & v[:-2]
++    act_acc = masked_mean(d2q.pow(2).mean(-1).sqrt(), triple_valid)
++
++    return {"act_rate[rad/s]": act_rate, "act_acc[rad/s2]": act_acc, f"hf>{HF_CUTOFF_HZ:.0f}Hz[%]": hf}
++
++
++def psd(x, fs):
++    """[P1.4] One-sided power spectral density of x [T, ...] along time: Hann window, mean removed.
++    Returns (f [F], psd [F, ...]) in units^2/Hz, scaled so that sum(psd) * df = mean square of x."""
++    T = x.shape[0]
++    x = x - x.mean(0, keepdim=True)
++    w = torch.hann_window(T, periodic=False, dtype=x.dtype, device="cpu").view(-1, *([1] * (x.ndim - 1)))
++    p = torch.fft.rfft(x * w, dim=0).abs().pow(2) / (fs * w.pow(2).sum())
++    p[1:] *= 2.0                                          # one-sided: fold the negative frequencies
++    if T % 2 == 0:
++        p[-1] /= 2.0                                      # ... except the Nyquist bin
++    return torch.fft.rfftfreq(T, d=1.0 / fs, device="cpu"), p
++
++
++def physics_rate_torques(rec):
++    """[P1.4] Torques of every physics step as one time series [T*D, N, 12], sampled at D / dt."""
++    tau = rec["torque_sub"]                               # [T, N, D, 12]
++    T, N, D, J = tau.shape
++    return tau.permute(0, 2, 1, 3).reshape(T * D, N, J), D
++
++
++def m_torque_smoothness(rec, dt):
++    """[P1.4] Torques at the physics rate (200 Hz), where PD chatter is visible:
++    - tau_rms: RMS torque over joints and time. Motor Joule losses go with current^2, i.e. torque^2.
++    - tau>10Hz: RMS of the torque content above HF_CUTOFF_HZ (vibration and heat without useful work).
++      Envs that never fell only, as the FFT needs an uninterrupted signal."""
++    v = rec["valid"]                                      # [T, N]
++    tau, D = physics_rate_torques(rec)                    # [T*D, N, 12]
++    vs = v.repeat_interleave(D, dim=0)                    # [T*D, N]
++    rms = masked_mean(tau.pow(2).mean(-1), vs).sqrt()     # [N]
++    f, p = psd(tau, D / dt)                               # [F, N, 12]
++    hf = (p[f >= HF_CUTOFF_HZ].sum(0) * (f[1] - f[0])).mean(-1).sqrt()   # [N]
++    hf[~v.all(0)] = float("nan")
++    return {"tau_rms[Nm]": rms, f"tau>{HF_CUTOFF_HZ:.0f}Hz[Nm]": hf}
+ 
+ 
+ TAU_SAT_FRAC = 0.95   # |tau| >= 95 % of the limit counts as "saturated"
+@@ -320,6 +362,63 @@
+             "swing_h[cm]": 100.0 * torch.from_numpy(swing_h).float(), "nonfoot[%time]": nonfoot}
+ 
+ 
++SPECTRA_BINS = [(0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, 0.5)]  # [P1.4] bins in the plot
++SERIES_STYLE = [("#2a78d6", "-"), ("#eb6834", "--"), ("#1baf7a", "-."), ("#eda100", ":")]  # fixed order
++
++
++def plot_spectra(rec, bin_id, grid, dt, path):
++    """[P1.4] Power spectral density of the joint targets (policy rate) and of the torques (physics rate) for the
++    SPECTRA_BINS commands, averaged over joints and over the envs of the bin that never fell.
++    The gait sits left of the dashed line (HF_CUTOFF_HZ); jitter shows up right of it."""
++    import matplotlib
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++
++    never_fell = rec["valid"].all(0)
++    bin_id = bin_id.cpu()
++    tau, D = physics_rate_torques(rec)
++    panels = (
++        ("Joint targets (policy, 50 Hz)", "rad²/Hz", psd(rec["q_target"], 1.0 / dt)),
++        ("Joint torques (physics, 200 Hz)", "Nm²/Hz", psd(tau, D / dt)),
++    )
++    ink, muted, hairline = "#0b0b0b", "#52514e", "#e6e5e0"
++    fig, axes = plt.subplots(1, 2, figsize=(9.5, 3.6))
++    missing = []
++    for k, cmd in enumerate(SPECTRA_BINS):
++        rows = torch.nonzero((grid - torch.tensor(cmd)).abs().sum(-1) < 1e-6).flatten()
++        if rows.numel() == 0:
++            continue
++        envs = (bin_id == rows[0]) & never_fell
++        if not envs.any():
++            missing.append(f"vx {cmd[0]:+.1f} vy {cmd[1]:+.1f} wz {cmd[2]:+.1f}")
++            continue
++        color, dash = SERIES_STYLE[k % len(SERIES_STYLE)]
++        for ax, (_, _, (f, p)) in zip(axes, panels):
++            ax.semilogy(f[1:], p[1:, envs].mean(dim=(1, 2)), color=color, linestyle=dash, linewidth=1.6,
++                        label=f"vx {cmd[0]:+.1f}  vy {cmd[1]:+.1f}  wz {cmd[2]:+.1f}")
++    for ax, (title, unit, (f, _)) in zip(axes, panels):
++        ax.axvline(HF_CUTOFF_HZ, color=muted, linewidth=0.8, linestyle=(0, (4, 3)))
++        ax.annotate(f"jitter >{HF_CUTOFF_HZ:.0f} Hz", (HF_CUTOFF_HZ, 0.0), xycoords=("data", "axes fraction"),
++                    xytext=(4, 4), textcoords="offset points", fontsize=7, color=muted)
++        ax.set_xlim(0, float(f[-1]))
++        ax.set_title(title, fontsize=9, loc="left", color=ink)
++        ax.set_xlabel("frequency [Hz]", fontsize=8, color=ink)
++        ax.set_ylabel(f"PSD [{unit}]", fontsize=8, color=ink)
++        ax.tick_params(labelsize=7, colors=muted)
++        ax.grid(True, which="major", color=hairline, linewidth=0.6)
++        ax.set_axisbelow(True)
++        for side in ("top", "right"):
++            ax.spines[side].set_visible(False)
++    if len(missing) < len(SPECTRA_BINS) and axes[0].get_legend_handles_labels()[0]:
++        axes[0].legend(frameon=False, fontsize=7, labelcolor=ink, loc="upper right")
++    if missing:
++        fig.text(0.01, 0.01, "not shown, every env fell: " + "; ".join(missing), fontsize=7, color=muted)
++    fig.tight_layout(rect=(0, 0.05 if missing else 0, 1, 1))
++    fig.savefig(path, dpi=150)
++    plt.close(fig)
++    print(f"spectra plot saved to {path}")
++
++
+ def plot_gait(rec, bin_id, grid, dt, path, seconds=3.0):
+     """Contact sequence of one representative env per command bin (first env that never fell)."""
+     import matplotlib
+@@ -412,7 +511,8 @@
+ # One printed table per entry. Add new metric functions to the right table.
+ TABLES = {
+     "Tracking & stability": [m_tracking, m_measured],
+-    "Smoothness & actuation": [m_action_smoothness, m_torque_limits],
++    "Smoothness": [m_action_smoothness, m_torque_smoothness],   # [P1.4] split from "Smoothness & actuation"
++    "Actuation limits": [m_torque_limits],
+     "Energy": [m_cot],
+     "Gait": [m_gait],
+     "Foot slip": [m_slip],
+@@ -603,6 +703,8 @@
+         report(rec, bin_id, grid.cpu(), ood, env.dt, title, csv_path)
+         plot_gait(rec, bin_id, grid.cpu(), env.dt,
+                   os.path.join(log_dir, f"gait_ckpt{args.ckpt}_seed{args.seed}.png"))
++        plot_spectra(rec, bin_id, grid.cpu(), env.dt,                                     # [P1.4]
++                     os.path.join(log_dir, f"spectra_ckpt{args.ckpt}_seed{args.seed}.png"))
+ 
+     # Determinism check: two runs with the same seed must print the same number.
+     print(f"checksum: {rec['lin_vel'].double().sum().item():.10e}")
+@@ -614,4 +716,4 @@
+ 
+ 
+ if __name__ == "__main__":
+-    main()
+\ No newline at end of file
++    main()
+\ No newline at end of file
+--- /dev/null
++++ b/go2_smooth_ppo.py
+@@ -0,0 +1,287 @@
++"""
++go2_smooth_ppo.py - [P1.4] PPO with optional action-smoothness regularizers, for rsl-rl-lib 5.5.1.
++
++go2_train.py only uses this class when it is given --lcp, --caps-t or --caps-s; otherwise training uses rsl_rl's
++PPO unchanged. All three terms act on the policy network, not on the reward:
++
++- LCP, Lipschitz-constrained policy (Chen et al. 2024): gradient penalty
++      L_gp = E[ ||d log pi(a|s) / ds||^2 ]   over the PPO mini-batch,
++  as in their code (ppo_rma.py, _calc_grad_penalty), where every robot uses a coefficient of 0.002.
++- CAPS (Mysore et al. 2021), with mu(s) the mean action:
++      L_T = E[ ||mu(s_t) - mu(s_t+1)|| ]       temporal: consecutive steps of the same episode
++      L_S = E[ ||mu(s) - mu(s + eps)|| ]       spatial: eps ~ N(0, sigma)
++  Their PPO settings for Ant: lambda_T = 0.1, lambda_S = 0.5. They choose sigma "based on expected measurement
++  noise": go2_train.py passes the observation-noise scales of P1.2.
++
++update() is a copy of rsl_rl 5.5.1 PPO.update(); the additions are marked [P1.4]. If you upgrade rsl_rl, re-copy
++update() from the new version and re-apply the marked blocks.
++"""
++
++from __future__ import annotations
++
++import warnings
++from importlib import metadata
++
++import torch
++import torch.nn as nn
++from tensordict import TensorDict
++
++from rsl_rl.algorithms import PPO
++
++RSL_RL_VERSION = "5.5.1"
++
++
++class SmoothPPO(PPO):
++    def __init__(
++        self,
++        *args,
++        grad_penalty_coef: float = 0.0,
++        caps_temporal_coef: float = 0.0,
++        caps_spatial_coef: float = 0.0,
++        caps_sigma: float | list[float] = 0.0,
++        **kwargs,
++    ) -> None:
++        super().__init__(*args, **kwargs)
++        if metadata.version("rsl-rl-lib") != RSL_RL_VERSION:
++            warnings.warn(
++                f"go2_smooth_ppo.SmoothPPO.update() is a copy of rsl-rl-lib {RSL_RL_VERSION}; you have "
++                f"{metadata.version('rsl-rl-lib')}. Re-copy PPO.update() and re-apply the [P1.4] blocks."
++            )
++        if self.actor.is_recurrent or self.critic.is_recurrent:
++            raise NotImplementedError("SmoothPPO is written for MLP actors and critics.")
++        self.grad_penalty_coef = grad_penalty_coef
++        self.caps_temporal_coef = caps_temporal_coef
++        self.caps_spatial_coef = caps_spatial_coef
++        # per actor-input dimension (list) or one value for all
++        self.caps_sigma = torch.as_tensor(caps_sigma, dtype=torch.float, device=self.device)
++
++    # [P1.4] ---------------------------------------------------------------------------------------------------
++    def _grad_penalty(self, actions_log_prob: torch.Tensor, actor_inputs: list[torch.Tensor]) -> torch.Tensor:
++        """LCP: mean over the batch of the squared norm of d log pi(a|s) / d(actor input)."""
++        grads = torch.autograd.grad(actions_log_prob.sum(), actor_inputs, create_graph=True)
++        return sum(g.square().sum(dim=-1) for g in grads).mean()
++
++    def _caps_temporal(self, n_samples: int) -> torch.Tensor:
++        """CAPS L_T on random (step, env) pairs of the rollout whose next observation is in the same episode."""
++        st = self.storage
++        t = torch.randint(0, st.num_transitions_per_env - 1, (n_samples,), device=self.device)
++        e = torch.randint(0, st.num_envs, (n_samples,), device=self.device)
++        same_episode = 1.0 - st.dones[t, e].float().view(-1)  # done at t -> observation t+1 is a new episode
++        mu_t = self.actor(st.observations[t, e])
++        mu_next = self.actor(st.observations[t + 1, e])
++        dist = torch.sqrt((mu_t - mu_next).square().sum(dim=-1) + 1e-8)
++        return (dist * same_episode).sum() / same_episode.sum().clamp(min=1.0)
++
++    def _caps_spatial(self, obs: TensorDict) -> torch.Tensor:
++        """CAPS L_S: distance between the mean actions at s and at s + N(0, sigma)."""
++        noisy = obs.clone()
++        start = 0
++        for group in self.actor.obs_groups:
++            dim = obs[group].shape[-1]
++            sigma = self.caps_sigma if self.caps_sigma.ndim == 0 else self.caps_sigma[start : start + dim]
++            noisy[group] = obs[group] + sigma * torch.randn_like(obs[group])
++            start += dim
++        dist = torch.sqrt((self.actor(obs) - self.actor(noisy)).square().sum(dim=-1) + 1e-8)
++        return dist.mean()
++
++    # ------------------------------------------------------------------------------------------------------------
++    def update(self) -> dict[str, float]:
++        """Run optimization epochs over stored batches and return mean losses."""
++        mean_value_loss = 0
++        mean_surrogate_loss = 0
++        mean_entropy = 0
++        # RND loss
++        mean_rnd_loss = 0 if self.rnd else None
++        # Symmetry loss
++        mean_symmetry_loss = 0 if self.symmetry else None
++        # [P1.4] smoothness losses
++        mean_smooth = {"grad_penalty": 0.0, "caps_temporal": 0.0, "caps_spatial": 0.0}
++
++        # Get mini-batch generator
++        if self.actor.is_recurrent or self.critic.is_recurrent:
++            generator = self.storage.recurrent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
++        else:
++            generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
++
++        # Iterate over mini-batches
++        for batch in generator:
++            original_batch_size = batch.observations.batch_size[0]
++
++            # Check if we should normalize advantages per mini-batch
++            if self.normalize_advantage_per_mini_batch:
++                with torch.no_grad():
++                    batch.advantages = (batch.advantages - batch.advantages.mean()) / (batch.advantages.std() + 1e-8)  # type: ignore
++
++            # Perform symmetric augmentation if enabled
++            if self.symmetry:
++                self.symmetry.augment_batch(batch, original_batch_size)
++
++            # [P1.4] the actor gets its own copy of the observations, which requires grad for the gradient penalty
++            actor_obs = batch.observations
++            actor_inputs = []
++            if self.grad_penalty_coef > 0.0:
++                actor_obs = batch.observations.clone()
++                for group in self.actor.obs_groups:
++                    actor_obs[group] = actor_obs[group].detach().requires_grad_(True)
++                    actor_inputs.append(actor_obs[group])
++
++            # Optionally use mixed precision for the forward pass and loss computation
++            with torch.amp.autocast(  # type: ignore
++                device_type=torch.device(self.device).type, enabled=self.use_mixed_precision, dtype=torch.bfloat16
++            ):
++                # Recompute actions log prob and entropy for current batch of transitions
++                # Note: We need to do this because we updated the policy with new parameters
++                self.actor(
++                    actor_obs,  # [P1.4] was batch.observations
++                    masks=batch.masks,
++                    hidden_state=batch.hidden_states[0],
++                    stochastic_output=True,
++                )
++                actions_log_prob = self.actor.get_output_log_prob(batch.actions)  # type: ignore
++                values = self.critic(batch.observations, masks=batch.masks, hidden_state=batch.hidden_states[1])
++                # Note: We only keep the following tensors for the original samples in case of symmetry augmentation
++                distribution_params = tuple(p[:original_batch_size] for p in self.actor.output_distribution_params)
++                entropy = self.actor.output_entropy[:original_batch_size]
++
++                # Compute KL divergence and adapt the learning rate
++                if self.desired_kl is not None and self.schedule == "adaptive":
++                    with torch.inference_mode():
++                        kl = self.actor.get_kl_divergence(batch.old_distribution_params, distribution_params)  # type: ignore
++                        kl_mean = torch.mean(kl)
++
++                        # Reduce the KL divergence across all GPUs
++                        if self.is_multi_gpu:
++                            torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
++                            kl_mean /= self.gpu_world_size
++
++                        # Update the learning rate only on the main process
++                        if self.gpu_global_rank == 0:
++                            if kl_mean > self.desired_kl * 2.0:
++                                self.learning_rate = max(1e-5, self.learning_rate / 1.5)
++                            elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
++                                self.learning_rate = min(1e-2, self.learning_rate * 1.5)
++
++                        # Update the learning rate for all GPUs
++                        if self.is_multi_gpu:
++                            lr_tensor = torch.tensor(self.learning_rate, device=self.device)
++                            torch.distributed.broadcast(lr_tensor, src=0)
++                            self.learning_rate = lr_tensor.item()
++
++                        # Update the learning rate for all parameter groups
++                        for param_group in self.optimizer.param_groups:
++                            param_group["lr"] = self.learning_rate
++
++                # Surrogate loss
++                ratio = torch.exp(actions_log_prob - torch.squeeze(batch.old_actions_log_prob))  # type: ignore
++                surrogate = -torch.squeeze(batch.advantages) * ratio  # type: ignore
++                surrogate_clipped = -torch.squeeze(batch.advantages) * torch.clamp(  # type: ignore
++                    ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
++                )
++                surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
++
++                # Value function loss
++                if self.use_clipped_value_loss:
++                    value_clipped = batch.values + (values - batch.values).clamp(-self.clip_param, self.clip_param)
++                    value_losses = (values - batch.returns).pow(2)
++                    value_losses_clipped = (value_clipped - batch.returns).pow(2)
++                    value_loss = torch.max(value_losses, value_losses_clipped).mean()
++                else:
++                    value_loss = (batch.returns - values).pow(2).mean()
++
++                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
++
++                # [P1.4] smoothness regularizers (after the PPO terms: the extra actor passes below are
++                # deterministic and do not touch the distribution used above)
++                if self.grad_penalty_coef > 0.0:
++                    grad_penalty = self._grad_penalty(actions_log_prob, actor_inputs)
++                    loss = loss + self.grad_penalty_coef * grad_penalty
++                    mean_smooth["grad_penalty"] += grad_penalty.item()
++                if self.caps_temporal_coef > 0.0:
++                    caps_temporal = self._caps_temporal(original_batch_size)
++                    loss = loss + self.caps_temporal_coef * caps_temporal
++                    mean_smooth["caps_temporal"] += caps_temporal.item()
++                if self.caps_spatial_coef > 0.0:
++                    caps_spatial = self._caps_spatial(batch.observations[:original_batch_size])
++                    loss = loss + self.caps_spatial_coef * caps_spatial
++                    mean_smooth["caps_spatial"] += caps_spatial.item()
++
++                # RND loss
++                rnd_loss = self.rnd.compute_loss(batch.observations[:original_batch_size]) if self.rnd else None  # type: ignore
++
++                # Symmetry loss
++                if self.symmetry:
++                    symmetry_loss = self.symmetry.compute_loss(self.actor, batch, original_batch_size)
++                    if self.symmetry.use_mirror_loss:
++                        loss = loss + self.symmetry.mirror_loss_coeff * symmetry_loss
++
++            # Compute the gradients for PPO
++            self.optimizer.zero_grad()
++            loss.backward()
++            # Compute the gradients for RND
++            if self.rnd:
++                self.rnd.optimizer.zero_grad()
++                rnd_loss.backward()
++
++            # Collect gradients from all GPUs
++            if self.is_multi_gpu:
++                self.reduce_parameters()
++
++            # Apply the gradients for PPO
++            nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
++            nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
++            self.optimizer.step()
++            # Apply the gradients for RND
++            if self.rnd:
++                self.rnd.optimizer.step()
++
++            # Store the losses
++            mean_value_loss += value_loss.item()
++            mean_surrogate_loss += surrogate_loss.item()
++            mean_entropy += entropy.mean().item()
++            # RND loss
++            if mean_rnd_loss is not None:
++                mean_rnd_loss += rnd_loss.item()
++            # Symmetry loss
++            if mean_symmetry_loss is not None:
++                mean_symmetry_loss += symmetry_loss.item()
++
++        # Update the normalizers
++        obs = self.storage.observations.flatten(0, 1)
++        self.actor.update_normalization(obs)  # type: ignore
++        self.critic.update_normalization(obs)  # type: ignore
++        if self.rnd:
++            self.rnd.update_normalization(obs)  # type: ignore
++
++        # Divide the losses by the number of updates
++        num_updates = self.num_learning_epochs * self.num_mini_batches
++        mean_value_loss /= num_updates
++        mean_surrogate_loss /= num_updates
++        mean_entropy /= num_updates
++        if mean_rnd_loss is not None:
++            mean_rnd_loss /= num_updates
++        if mean_symmetry_loss is not None:
++            mean_symmetry_loss /= num_updates
++
++        # Construct the loss dictionary
++        loss_dict = {
++            "value": mean_value_loss,
++            "surrogate": mean_surrogate_loss,
++            "entropy": mean_entropy,
++        }
++        if self.rnd:
++            loss_dict["rnd"] = mean_rnd_loss
++        if self.symmetry:
++            loss_dict["symmetry"] = mean_symmetry_loss
++        # [P1.4] logged as Loss/grad_penalty, Loss/caps_temporal, Loss/caps_spatial
++        for name, coef in (
++            ("grad_penalty", self.grad_penalty_coef),
++            ("caps_temporal", self.caps_temporal_coef),
++            ("caps_spatial", self.caps_spatial_coef),
++        ):
++            if coef > 0.0:
++                loss_dict[name] = mean_smooth[name] / num_updates
++
++        # Clear the storage
++        self.storage.clear()
++
++        return loss_dict
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -17,7 +17,7 @@
+ 
+ import genesis as gs
+ 
+-from go2_env import Go2Env, FOOT_LINKS, GO2_TORQUE_LIMITS, GO2_DOF_VEL_LIMITS
++from go2_env import Go2Env, FOOT_LINKS, GO2_TORQUE_LIMITS, GO2_DOF_VEL_LIMITS, obs_noise_scales
+ from go2_commands import LIN_DEADZONE, ANG_DEADZONE  # [P1.1] same deadzone as at deployment
+ 
+ import subprocess, json, sys, torch
+@@ -198,6 +198,8 @@
+             "collision": -1.0,
+             "dof_pos_limits": -10.0,
+             "dof_vel_limits": -1.0,  # no legged_gym default; at most -1 per joint and policy step (x dt)
++            # [P1.4] second difference of the joint targets: walk-these-ways action_smoothness_2, same weight
++            "action_smoothness": -0.1,
+         },
+     }
+     command_cfg = {
+@@ -225,11 +227,27 @@
+     parser.add_argument("--max-iterations", type=int, default=1000, help="Number of learning iterations")
+     parser.add_argument("--seed", type=int, default=1, help="Random seed")
+     parser.add_argument("--cpu", action="store_true", help="CPU backend, for quick smoke tests only")
++    # [P1.4] smoothness regularizers on the policy network (go2_smooth_ppo.py); all off by default. Use them only if
++    # the action_smoothness reward is not enough (check the "Smoothness" table of go2_metrics.py first).
++    parser.add_argument("--lcp", type=float, default=0.0, help="LCP gradient-penalty coefficient (paper: 0.002)")
++    parser.add_argument("--caps-t", type=float, default=0.0, help="CAPS temporal coefficient (paper, Ant: 0.1)")
++    parser.add_argument("--caps-s", type=float, default=0.0, help="CAPS spatial coefficient (paper, Ant: 0.5)")
+     args = parser.parse_args()
+ 
+     log_dir = f"logs/{args.exp_name}"
+     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
+     train_cfg = get_train_cfg(args.exp_name)
++    if args.lcp > 0 or args.caps_t > 0 or args.caps_s > 0:  # [P1.4]
++        train_cfg["algorithm"].update(
++            {
++                "class_name": "go2_smooth_ppo:SmoothPPO",
++                "grad_penalty_coef": args.lcp,
++                "caps_temporal_coef": args.caps_t,
++                "caps_spatial_coef": args.caps_s,
++                # CAPS spatial noise: the observation-noise scales of P1.2 (0 on commands and last actions)
++                "caps_sigma": obs_noise_scales(obs_cfg, env_cfg["num_actions"]),
++            }
++        )
+ 
+     if os.path.exists(log_dir):
+         shutil.rmtree(log_dir)
