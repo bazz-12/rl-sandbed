@@ -148,7 +148,7 @@ class Policy:
             t0 = time.perf_counter()
             with torch.no_grad():
                 for _ in range(warmup):
-                    self.net(torch.zeros(1, self.n_obs))
+                    self.net(torch.zeros(1, self.n_obs, device="cpu"))
             self.warmup_s = time.perf_counter() - t0
             self.net.reset()
         self.default_q = np.asarray(deploy_cfg["default_joint_angles"], dtype=float)
