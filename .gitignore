@@ -4,4 +4,4 @@ __pycache__/
 *.pt
 *.pth
 *.onnx
-*.zip
+*.zipnightly/
