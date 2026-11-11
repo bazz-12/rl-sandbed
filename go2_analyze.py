@@ -21,6 +21,11 @@ The same estimators run on every world, so their bias cancels in a comparison:
     height      base above the stance feet
 When a run has ground truth (Genesis bench, unitree_mujoco through rt/sportmodestate or the headless --truth file),
 "vx_meas", "lin_err", "z" use it (as go2_metrics.py does); on the robot they fall back to the estimates.
+[P2] Gait quality per phase, from the same contact estimate (and from the true contacts when logged, "_true"):
+    air_t, diag_sync, air_cv, air_asym      go2_metrics.py's P2.1 / P2.3 / P2.4 columns (gait_pattern())
+    sched_match                             --gait wtw policies: share of time the feet follow the gait clock read
+                                            from the logged observations (clock_stance())
+    python go2_compare.py genesis.csv mujoco.csv --preset gait   # after --csv: the gait columns, world against world
 """
 
 import argparse
@@ -329,6 +334,17 @@ def phase_metrics(run, w):
             if a > 0 and b < len(st) and b - a > 2 and np.isfinite(fh[a:b, k]).any():
                 heights.append(np.nanmax(fh[a:b, k]))
     m["swing_h[cm]"] = 100.0 * float(np.mean(heights)) if heights else float("nan")
+    # [P2] gait pattern and symmetry, as go2_metrics.py, from the estimated contacts and from the true ones
+    for suffix, key in (("", "stance"), ("_true", "stance_true")):
+        if key in g:
+            m.update(gait_pattern(g[key][sel], cmd, suffix))
+    clock = run.cfg.get("gait_clock")
+    if clock and np.linalg.norm(cmd[:3]) >= MOVING_CMD:  # [P2.4] does the robot follow its gait clock?
+        want = clock_stance(run, g["t"][sel], clock)
+        if want is not None:
+            for suffix, key in (("", "stance"), ("_true", "stance_true")):
+                if key in g:
+                    m[f"sched_match{suffix}[%]"] = 100.0 * float(np.mean(g[key][sel] == want))
     # timing during the phase
     if csel.any():
         m["loop_p99[ms]"] = 1e3 * float(np.percentile(run.c["loop_dt"][csel], 99))
@@ -336,6 +352,61 @@ def phase_metrics(run, w):
     if psel.any():
         m["infer_p99[ms]"] = 1e3 * float(np.percentile(run.p["infer"][psel], 99))
     return m
+
+
+MOVING_CMD = 0.1  # [P2] |(vx, vy, wz)| below this = standing command (go2_metrics.py MOVING_CMD, Go2Env.zero_cmd)
+DIAGONALS = ((0, 3), (1, 2))  # [P2] trot pairs in leg order FR, FL, RR, RL: FR-RL, FL-RR (go2_env.TROT_PAIRS)
+MIRRORS = ((0, 1), (2, 3))  # [P2] left-right pairs: FR-FL, RR-RL
+
+
+def gait_pattern(st, cmd, suffix=""):
+    """[P2] go2_metrics.py's gait-quality columns from stance flags st [T, 4] (leg order FR, FL, RR, RL) at GRID_HZ:
+    air_t (mean complete swing [s], P2.1), diag_sync (while a foot is in the air, share of time each diagonal pair
+    agrees, P2.4), air_cv (cycle-to-cycle spread of each foot's swings, P2.4), air_asym (left/right swing difference,
+    P2.3). The estimated contacts (joint torques, hysteresis, 40 ms debounce) differ from go2_metrics.py's 3 N force
+    threshold, so compare these columns between worlds (same estimator), not with go2_metrics.py's absolute values."""
+    out = {}
+    swings = [[] for _ in range(4)]
+    for k in range(4):
+        a_, b_ = runs_of(~st[:, k])
+        swings[k] = [(b - a) / GRID_HZ for a, b in zip(a_, b_) if a > 0 and b < len(st)]
+    flat = [d for s in swings for d in s]
+    out[f"air_t{suffix}[s]"] = float(np.mean(flat)) if flat else float("nan")
+    stepping = ~st.all(1)
+    moving = np.linalg.norm(cmd[:3]) >= MOVING_CMD
+    if moving and stepping.mean() >= 0.05:
+        agree = np.mean([st[:, i] == st[:, j] for i, j in DIAGONALS], axis=0)
+        out[f"diag_sync{suffix}[%]"] = 100.0 * float(agree[stepping].mean())
+    else:
+        out[f"diag_sync{suffix}[%]"] = float("nan")
+    cvs = [100.0 * np.std(s) / np.mean(s) for s in swings if len(s) >= 3]
+    out[f"air_cv{suffix}[%]"] = float(np.mean(cvs)) if cvs else float("nan")
+    if all(swings):
+        m = [np.mean(s) for s in swings]
+        out[f"air_asym{suffix}[%]"] = 100.0 * float(np.mean([abs(m[i] - m[j]) / (0.5 * (m[i] + m[j]))
+                                                             for i, j in MIRRORS]))
+    else:
+        out[f"air_asym{suffix}[%]"] = float("nan")
+    return out
+
+
+def clock_stance(run, tg, clock):
+    """[P2.4] Stance the gait clock asks for at the grid times tg [T, 4] (leg order FR, FL, RR, RL), from the clock
+    entries of the logged observations (the last 2 x 4: sin then cos of each foot's warped phase, feet in clock["feet"]
+    order). Between two policy steps the phase advances at clock["frequency"]. Training asks every foot to stand at a
+    zero command, so this is only meaningful while moving. None if the log has no observation."""
+    p = run.p
+    if not len(p.get("t", [])):
+        return None
+    nf = len(clock["feet"])
+    obs = p["obs"].astype(float)
+    w = np.mod(np.arctan2(obs[:, -2 * nf:-nf], obs[:, -nf:]) / (2 * np.pi), 1.0)  # warped phase [P, F]
+    duty = float(clock["duty"])
+    raw = np.where(w < 0.5, w * duty / 0.5, duty + (w - 0.5) * (1.0 - duty) / 0.5)  # un-warped phase
+    k = np.clip(np.searchsorted(p["t"], tg, side="right") - 1, 0, len(p["t"]) - 1)  # latest policy step
+    phase = np.mod(raw[k] + float(clock["frequency"]) * (tg - p["t"][k])[:, None], 1.0)
+    order = [clock["feet"].index(leg) for leg in K.LEGS]
+    return (phase < duty)[:, order]
 
 
 def quat_yaw(quat):
@@ -815,7 +886,10 @@ def main():
                     "z[m]", "z_est[m]", "pitch[deg]", "tilt_max[deg]", "drift[m]", "yaw_drift[deg/s]",
                     "act_rate[rad/s]", "act_acc[rad/s2]", f"hf>{HF_HZ:.0f}Hz[%]", "tau_rms[Nm]",
                     f"tau>{HF_HZ:.0f}Hz[Nm]", "tau_peak[%lim]", "power[W]", "CoT[-]", "duty[-]", "duty_true[-]",
-                    "step_freq[Hz]", "step_freq_true[Hz]", "swing_h[cm]", "loop_p99[ms]", "infer_p99[ms]"]
+                    "step_freq[Hz]", "step_freq_true[Hz]", "swing_h[cm]",
+                    "air_t[s]", "air_t_true[s]", "diag_sync[%]", "diag_sync_true[%]", "air_cv[%]", "air_asym[%]",
+                    "sched_match[%]", "sched_match_true[%]",  # [P2]
+                    "loop_p99[ms]", "infer_p99[ms]"]
     order = []
     for run in runs:
         for w in all_windows[run.letter]:

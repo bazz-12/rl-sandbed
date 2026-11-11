@@ -25,9 +25,16 @@ saves a plot.
     python go2_fsm_sim.py -e go2-p15 --scenario walk --profile fwd_back --friction 0.4 --log  # unitree_mujoco's feet
 --log writes logs/deploy/genesis_<date>_<scenario>.npz (go2_log.py, env 0, with ground truth): go2_analyze.py compares
 it with the unitree_mujoco and robot logs of the same scenario.
+[P3.1] The bench is on flat ground, also with --dr and for runs trained on terrain (the robot side has no terrain map);
+--slope DEG puts it on a plane tilted by DEG, rising along +x:
+    python go2_fsm_sim.py -e go2-p31 --slope 15                 # lies on the slope facing uphill, stands, walks uphill
+    python go2_fsm_sim.py -e go2-p31 --slope -15 --scenario walk --profile fwd_back --log   # facing downhill
+The robot starts lying aligned with the slope; the base height is then measured above the ground under the base, and
+the tilt from the ground normal, so the checks (standing: z > 0.25 m, tilt < 10 deg) keep their meaning.
 """
 
 import argparse
+import math
 import os
 import pickle
 import time
@@ -37,10 +44,10 @@ import numpy as np
 import torch
 
 import genesis as gs
-from genesis.utils.geom import inv_quat, transform_by_quat
+from genesis.utils.geom import inv_quat, transform_by_quat, transform_quat_by_quat
 
 import go2_log
-from go2_env import Go2Env, nominal_world
+from go2_env import Go2Env, nominal_world, GO2_MJCF_LOWER_LEG  # [S2R] GO2_MJCF_LOWER_LEG
 from go2_export import make_deploy_cfg
 from go2_fsm import LIE_POSE_LEG, MODES, FsmConfig, Go2StateMachine, Mode, Policy
 from go2_inputs import PROFILES, SCENARIOS, CommandProfile, Scenario, buttons_mask
@@ -64,8 +71,11 @@ def sticks_at(scn, t):
     return next((s for t0, t1, s in scn["sticks"] if t0 <= t < t1), (0.0, 0.0, 0.0, 0.0))
 
 
-def env_observation(env, gyro, quat, q, dq, cmd, last_action):
-    """Observation of env 0 computed by Go2Env itself, from the same robot state (reference for the check)."""
+def env_observation(env, gyro, quat, q, dq, cmd, last_action, k=0):
+    """Observation of env 0 computed by Go2Env itself, from the same robot state (reference for the check).
+    [P2.4] k: policy steps since the policy started. Go2Env's clock starts at phase 0 and advances by dt x frequency
+    after each env step, so its phase at the k-th observation is k * dt * frequency: computed here from the env's own
+    dt and frequency, independently of the deploy-side clock, so the check covers its timing too."""
     dev, f = gs.device, gs.tc_float
     quat = torch.as_tensor(quat, dtype=f, device=dev)
     env.base_ang_vel[0] = torch.as_tensor(gyro, dtype=f, device=dev)
@@ -74,6 +84,9 @@ def env_observation(env, gyro, quat, q, dq, cmd, last_action):
     env.dof_pos[0] = torch.as_tensor(q, dtype=f, device=dev)
     env.dof_vel[0] = torch.as_tensor(dq, dtype=f, device=dev)
     env.actions[0] = torch.as_tensor(last_action, dtype=f, device=dev)
+    if env.gait_clock:  # [P2.4]
+        env.gait_phase[0] = (k * env.dt * env.gait_frequency) % 1.0
+        env._update_gait_targets()
     env._update_observation()
     return env.obs_buf[0].cpu().numpy()
 
@@ -119,7 +132,7 @@ def summarize(log, dt, scn_name, fsm0):
                   f"tilt {tilt[k:].max():.1f} deg max")
 
 
-def plot(log, dt, path, title):
+def plot(log, dt, path, title, slope=False):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -128,7 +141,8 @@ def plot(log, dt, path, title):
     t, mode0 = log["t"], log["mode"][:, 0]
     ink, muted, hairline, band = "#0b0b0b", "#52514e", "#e6e5e0", "#f0efec"
     color = "#2a78d6"
-    panels = (("base height [m]", log["z"]), ("base tilt [deg]", log["tilt"]),
+    panels = (("height above ground [m]" if slope else "base height [m]", log["z"]),
+              ("tilt from ground normal [deg]" if slope else "base tilt [deg]", log["tilt"]),  # [P3.1]
               ("peak joint torque [% of limit]", 100 * log["tau"]))
     fig, axes = plt.subplots(3, 1, figsize=(9, 6.2), sharex=True)
     for ax, (label, y) in zip(axes, panels):
@@ -176,10 +190,24 @@ def main():
     p.add_argument("--joint-damping", type=float, default=None, help="viscous joint damping [Nm s/rad] (go2.xml: 0.1)")
     p.add_argument("--joint-friction", type=float, default=None, help="joint Coulomb friction [Nm] (go2.xml: 0.2)")
     p.add_argument("--armature", type=float, default=None, help="rotor inertia [kg m2] (training: env_cfg armature)")
+    # [S2R] go2.xml feet: condim="6" friction="0.4 0.02 0.01". Default: the run's own (none before [S2R] runs)
+    p.add_argument("--foot-torsion", type=float, default=None, metavar="M",
+                   help="contact spin resistance [m] (go2.xml: 0.02; 0 = point contact, rolling off too)")
+    p.add_argument("--mjcf-legs", action="store_true",
+                   help="calf mass and CoM of unitree_mujoco's go2.xml (0.241 kg with the foot, CoM 14.1 cm below the "
+                        "knee) instead of go2.urdf's (0.154 + 0.04 kg, 11.5 cm); runs trained with them already have them")
+    p.add_argument("--cone", choices=("pyramidal", "elliptic"), default=None,
+                   help="friction cone (go2.xml: elliptic; Genesis default: pyramidal)")
+    p.add_argument("--impratio", type=float, default=None, help="friction / normal impedance ratio (go2.xml: 100)")
+    p.add_argument("--foot-rolling", type=float, default=None, metavar="M",
+                   help="contact rolling resistance [m] (go2.xml: 0.01; 0 = off), needs torsion")
     p.add_argument("--friction", type=float, default=None, metavar="MU",
                    help="ground-foot friction (default 1.0; unitree_mujoco's feet: 0.4)")
     p.add_argument("--log", nargs="?", const="", default=None, metavar="FILE",
                    help="go2_log.py log of env 0 (default name: logs/deploy/genesis_<date>_<scenario>.npz)")
+    p.add_argument("--slope", type=float, default=None, metavar="DEG",
+                   help="[P3.1] ground tilted by DEG, rising along +x (negative: falling): the robot lies on it facing "
+                        "+x, the stick walks uphill. Default: flat ground, also with --dr")
     args = p.parse_args()
 
     gs.init(backend=gs.gpu if args.gpu else gs.cpu, logging_level="warning", seed=args.seed)
@@ -195,18 +223,30 @@ def main():
     if not args.dr:
         nominal_world(env_cfg, obs_cfg)
     obs_cfg["add_noise"] = False  # the observation check compares noise-free observations
+    # [P3.1] flat ground (also with --dr and for runs trained on terrain), or a tilted plane
+    env_cfg["terrain"] = ({"mode": "slope", "slope_deg": args.slope, "random_yaw": False, "spawn_xy_noise": 0.0}
+                          if args.slope else None)
     # The bench runs its own control loop: no termination, no reset, no pushes, no fallen starts
     env_cfg.update(termination_if_roll_greater_than=1e9, termination_if_pitch_greater_than=1e9,
                    terminate_after_contacts_on=[], episode_length_s=1e6, recovery={})
     if args.armature is not None:  # [S2R]
         env_cfg["armature"] = args.armature
+    for key, value in (("foot_torsional_friction", args.foot_torsion), ("foot_rolling_friction", args.foot_rolling)):
+        if value is not None:  # [S2R] 0 switches the term off (it is a scene option: set before the env is built)
+            env_cfg[key] = value if value > 0 else None
+    if args.cone is not None:  # [S2R]
+        env_cfg["friction_cone"] = args.cone
+    if args.impratio is not None:
+        env_cfg["impratio"] = args.impratio
+    if args.foot_torsion == 0 and args.foot_rolling is None:
+        env_cfg["foot_rolling_friction"] = None  # --foot-torsion 0 alone = point contacts, as in Genesis by default
     env = Go2Env(args.num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=args.viewer)
     N = env.num_envs
-    # [S2R] joint losses that the training model does not have (unitree_mujoco's go2.xml: damping 0.1, friction 0.2)
-    if args.joint_damping is not None:
-        env.robot.set_dofs_damping(torch.full((env.num_actions,), args.joint_damping), env.motors_dof_idx)
-    if args.joint_friction is not None:
-        env.robot.set_dofs_frictionloss(torch.full((env.num_actions,), args.joint_friction), env.motors_dof_idx)
+    # [S2R] joint losses (unitree_mujoco's go2.xml: damping 0.1, friction 0.2)
+    # [S2R] runs trained with joint losses already have them (env_cfg); these flags override the run's values
+    env.set_joint_losses(friction=args.joint_friction, damping=args.joint_damping)
+    if args.mjcf_legs:  # [S2R] go2.xml's lower legs (heavier, CoM lower than go2.urdf's)
+        env.set_lower_leg_inertial(GO2_MJCF_LOWER_LEG)
     if args.friction is not None:  # [S2R] as Go2Env's friction randomization: ground and robot get the same ratio
         n_links = env.robot.n_links
         env.friction[:] = args.friction
@@ -222,9 +262,10 @@ def main():
                             verbose=(i == 0)) for i in range(N)]
     # The exported deploy_cfg.json must describe the same robot interface as this env
     exported = fsms[0].policy.cfg
-    for key in ("joint_names", "default_joint_angles", "kp", "kd", "action_scale", "commands_scale", "obs_scales"):
-        a, b = exported[key], deploy_cfg[key]
-        same = a == b if isinstance(a, (str, dict)) or key == "joint_names" else np.allclose(a, b)
+    for key in ("joint_names", "default_joint_angles", "kp", "kd", "action_scale", "commands_scale", "obs_scales",
+                "gait_clock"):  # [P2.4]
+        a, b = exported.get(key), deploy_cfg.get(key)
+        same = a == b if isinstance(a, (str, dict)) or a is None or key == "joint_names" else np.allclose(a, b)
         if not same:
             raise SystemExit(f"deploy_cfg.json and the env disagree on {key}: {a} vs {b}")
     profile = CommandProfile(args.profile, fsms[0].num_commands) if args.profile else None  # [S2R]
@@ -246,6 +287,11 @@ def main():
     lie_urdf = [LIE_POSE_LEG[kinds[j.name.split("_")[1]]] for j in env.robot.joints[1:]]  # URDF joint order
     qpos = env.init_qpos.clone()
     qpos[2] = LIE_BASE_HEIGHT if args.suspended is None else args.suspended
+    if args.slope and args.suspended is None:  # [P3.1] lying aligned with the slope, LIE_BASE_HEIGHT above it
+        a = math.radians(args.slope)
+        qpos[2] = LIE_BASE_HEIGHT / math.cos(a)  # the plane passes through the origin, under the base
+        pitch = torch.tensor([[math.cos(0.5 * a), 0.0, -math.sin(0.5 * a), 0.0]], dtype=gs.tc_float, device=gs.device)
+        qpos[3:7] = transform_quat_by_quat(qpos[None, 3:7], pitch)[0]  # nose up by the slope (w, x, y, z)
     qpos[7:] = torch.tensor(lie_urdf, dtype=gs.tc_float, device=gs.device)
     env.robot.set_qpos(qpos, zero_velocity=True)
     # [S2R] --suspended: base pose and velocity reset before every physics step (pinned), legs free
@@ -274,11 +320,20 @@ def main():
                   "scenario": args.scenario, "joint_test": fsms[0].joint_test.describe(),
                   "modes": [m.value for m in MODES], "truth_kind": "full", "dr": args.dr,
                   "suspended": args.suspended, "latency_ms": delay * dt * 1000.0,
-                  "joint_damping": args.joint_damping, "joint_friction": args.joint_friction,
+                  # [S2R] the values in effect (the run's own unless overridden), not only the flags
+                  "joint_damping": float(env.joint_damping[0, 0]), "joint_friction": float(env.joint_friction[0, 0]),
                   "armature": env_cfg.get("armature"),
-                  "friction": float(env.friction[0]), "added_mass": float(env.added_mass[0])})
+                  "foot_torsional_friction": env_cfg.get("foot_torsional_friction"),  # [S2R]
+                  "foot_rolling_friction": env_cfg.get("foot_rolling_friction"),
+                  "friction_cone": env_cfg.get("friction_cone"), "impratio": env_cfg.get("impratio"),
+                  "mjcf_legs": args.mjcf_legs,
+                  "friction": float(env.friction[0]), "added_mass": float(env.added_mass[0]),
+                  "slope_deg": float(args.slope or 0.0)})  # [P3.1]
     # [S2R] feet in the log's leg order (FR, FL, RR, RL, as the joints and the SDK), not Go2Env's FOOT_LINKS order
     feet = [env.robot.get_link(f"{leg}_foot").idx_local for leg in ("FR", "FL", "RR", "RL")]
+    # [P3.1] base height above the ground under the base, tilt from the ground normal (flat: z and tilt as before)
+    normal = torch.tensor(env.ground.normal() if env.ground.kind == "slope" else (0.0, 0.0, 1.0), dtype=gs.tc_float,
+                          device=gs.device).repeat(N, 1)
     t_wall = time.monotonic()
     for k in range(n_steps):
         t = k * dt
@@ -304,7 +359,10 @@ def main():
         pol = fsms[0].policy
         if pol.steps != n_policy_steps:  # the policy ran during this update
             n_policy_steps = pol.steps
-            ref = env_observation(env, gyron[0], quatn[0], qn[0], dqn[0], fsms[0].command, pol.last_obs[-12:])
+            start = 6 + pol.commands_scale.size + 24  # [P2.4] last action: after gyro, gravity, commands, q, dq
+            last_action = pol.last_obs[start:start + 12]  # (no longer the last 12 entries when a clock follows)
+            ref = env_observation(env, gyron[0], quatn[0], qn[0], dqn[0], fsms[0].command, last_action,
+                                  pol.steps_since_reset - 1)  # [P2.4] index of the observation just used
             obs_err = max(obs_err, float(np.abs(ref - pol.last_obs).max()))
             n_checked += 1
 
@@ -333,10 +391,11 @@ def main():
             env.robot.set_dofs_velocity(None, base_dofs)
         env.scene.step()
 
-        g = transform_by_quat(env.global_gravity, inv)
-        log["z"][k] = env.robot.get_pos()[:, 2].cpu().numpy()
+        base = env.robot.get_pos()
+        log["z"][k] = (base[:, 2] - env.ground.height(base[:, :2])).cpu().numpy()  # [P3.1] flat: height 0
         log["vz"][k] = env.robot.get_vel()[:, 2].cpu().numpy()
-        log["tilt"][k] = np.degrees(np.arccos(np.clip(-g[:, 2].cpu().numpy(), -1.0, 1.0)))
+        n_body = transform_by_quat(normal, inv)  # [P3.1] flat: (0, 0, 1) in the body frame = minus projected gravity
+        log["tilt"][k] = np.degrees(np.arccos(np.clip(n_body[:, 2].cpu().numpy(), -1.0, 1.0)))
         log["tau"][k] = (tau.abs() / env.torque_limits).max(-1).values.cpu().numpy()
         log["err"][k] = (q_des - q).abs().max(-1).values.cpu().numpy()
         log["mode"][k] = [MODES.index(f.mode) for f in fsms]
@@ -348,8 +407,10 @@ def main():
     out = args.out or os.path.join(log_dir or ".", f"fsm_{args.scenario}.png")
     title = (f"{args.scenario} | {policy_name} | {N} robot{'s' if N > 1 else ''}"
              f"{' with training randomization' if args.dr else ''} | hand-over ramp {args.handover_s:.1f} s"
-             + (f" | hung at {args.suspended} m" if args.suspended is not None else ""))
-    plot(log, dt, out, title)
+             + (f" | hung at {args.suspended} m" if args.suspended is not None else "")
+             + (f" | on a {args.slope:+g} deg slope (+x {'uphill' if args.slope > 0 else 'downhill'})"
+                if args.slope else ""))  # [P3.1]
+    plot(log, dt, out, title, slope=bool(args.slope))
     if recorder is not None:
         recorder.events.extend([float(t), msg] for t, msg in fsms[0].events)
         print(f"log saved to {recorder.save(extra_meta={'obs_check_max_err': obs_err})}")

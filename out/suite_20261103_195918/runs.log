@@ -1,0 +1,708 @@
+
+##### suite_stand60_mu1_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu1_0.npz --exit-idle 3 --duration 164 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
+y +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.03 ms | max torque asked 13 %
+[   54.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.97 ms | max torque asked 13 %
+[   55.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.98 ms | max torque asked 13 %
+[   56.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.99 ms | max torque asked 13 %
+[   57.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.4 ms | step p99 1.03 ms | max torque asked 13 %
+[   58.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.97 ms | max torque asked 13 %
+[   59.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.00 ms | max torque asked 13 %
+[   60.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.01 ms | max torque asked 13 %
+[   61.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.97 ms | max torque asked 13 %
+[   62.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.98 ms | max torque asked 13 %
+[   63.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.02 ms | max torque asked 13 %
+[   64.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.00 ms | max torque asked 13 %
+[   65.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.99 ms | max torque asked 13 %
+[   66.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.00 ms | max torque asked 13 %
+[   67.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.99 ms | max torque asked 13 %
+[fsm  67.953 s] profile stand60 ended: done
+[   68.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.0 ms | state age p99 6.4 ms | step p99 0.97 ms | max torque asked 13 %
+[   69.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.99 ms | max torque asked 13 %
+[fsm  70.049 s] -> sit_down (L1+R1)
+[   70.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.99 ms | max torque asked 13 %
+[   71.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.52 ms | max torque asked 17 %
+[   72.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.50 ms | max torque asked 24 %
+[fsm  72.549 s] -> passive (sit-down done)
+[   73.3 s] passive    | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.48 ms | max torque asked 24 %
+[   74.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.46 ms | max torque asked 0 %
+[   75.3 s] passive    | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.47 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_195920_suite_stand60_mu1_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_195920_suite_stand60_mu1_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703560.575475 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_stand60_mu1_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu1_1.npz --exit-idle 3 --duration 164 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
+y +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 13 %
+[   54.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.89 ms | max torque asked 13 %
+[   55.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 13 %
+[   56.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 13 %
+[   57.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 13 %
+[   58.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 13 %
+[   59.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.85 ms | max torque asked 13 %
+[   60.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.88 ms | max torque asked 13 %
+[   61.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.85 ms | max torque asked 13 %
+[   62.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 13 %
+[   63.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.92 ms | max torque asked 13 %
+[   64.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 13 %
+[   65.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 13 %
+[   66.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.85 ms | max torque asked 13 %
+[   67.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 13 %
+[fsm  67.953 s] profile stand60 ended: done
+[   68.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 13 %
+[   69.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.88 ms | max torque asked 13 %
+[fsm  70.049 s] -> sit_down (L1+R1)
+[   70.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.85 ms | max torque asked 13 %
+[   71.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.7 ms | step p99 0.39 ms | max torque asked 17 %
+[   72.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.7 ms | step p99 0.42 ms | max torque asked 24 %
+[fsm  72.549 s] -> passive (sit-down done)
+[   73.3 s] passive    | loop p99 2.1 ms | state age p99 0.7 ms | step p99 0.44 ms | max torque asked 24 %
+[   74.3 s] passive    | loop p99 2.2 ms | state age p99 0.7 ms | step p99 0.51 ms | max torque asked 0 %
+[   75.3 s] passive    | loop p99 2.1 ms | state age p99 0.7 ms | step p99 0.47 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200042_suite_stand60_mu1_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200042_suite_stand60_mu1_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703642.401652 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_slow_mu1_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu1_0.npz --exit-idle 3 --duration 122 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+que asked 14 %
+[   11.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 33 %
+[   12.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.94 ms | max torque asked 28 %
+[   13.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 28 %
+[   14.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 28 %
+[   15.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 28 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 29 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 16 %
+[   18.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.87 ms | max torque asked 16 %
+[   19.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 30 %
+[   20.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 4.7 ms | step p99 0.86 ms | max torque asked 29 %
+[   21.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.91 ms | max torque asked 28 %
+[   22.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 27 %
+[   23.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 28 %
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.89 ms | max torque asked 28 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.87 ms | max torque asked 14 %
+[fsm  25.955 s] profile slow ended: done
+[   26.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 14 %
+[   27.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.89 ms | max torque asked 14 %
+[fsm  28.053 s] -> sit_down (L1+R1)
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 14 %
+[   29.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.7 ms | step p99 0.41 ms | max torque asked 48 %
+[   30.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.8 ms | step p99 0.40 ms | max torque asked 38 %
+[fsm  30.553 s] -> passive (sit-down done)
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 0.8 ms | step p99 0.39 ms | max torque asked 16 %
+[   32.3 s] passive    | loop p99 2.1 ms | state age p99 0.8 ms | step p99 0.36 ms | max torque asked 0 %
+[   33.3 s] passive    | loop p99 2.1 ms | state age p99 0.9 ms | step p99 0.37 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200203_suite_slow_mu1_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200203_suite_slow_mu1_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703723.699120 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_slow_mu1_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu1_1.npz --exit-idle 3 --duration 122 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+que asked 14 %
+[   11.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.99 ms | max torque asked 33 %
+[   12.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.00 ms | max torque asked 28 %
+[   13.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.98 ms | max torque asked 28 %
+[   14.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.98 ms | max torque asked 28 %
+[   15.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.01 ms | max torque asked 28 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.99 ms | max torque asked 28 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.1 ms | state age p99 6.0 ms | step p99 0.98 ms | max torque asked 16 %
+[   18.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.01 ms | max torque asked 17 %
+[   19.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.98 ms | max torque asked 29 %
+[   20.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.99 ms | max torque asked 28 %
+[   21.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.06 ms | max torque asked 28 %
+[   22.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.01 ms | max torque asked 28 %
+[   23.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.00 ms | max torque asked 28 %
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.02 ms | max torque asked 28 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.99 ms | max torque asked 14 %
+[fsm  25.953 s] profile slow ended: done
+[   26.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.99 ms | max torque asked 14 %
+[   27.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.03 ms | max torque asked 14 %
+[fsm  28.051 s] -> sit_down (L1+R1)
+[   28.3 s] sit_down   | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.98 ms | max torque asked 14 %
+[   29.3 s] sit_down   | loop p99 2.0 ms | state age p99 0.1 ms | step p99 0.48 ms | max torque asked 49 %
+[   30.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.52 ms | max torque asked 37 %
+[fsm  30.551 s] -> passive (sit-down done)
+[   31.3 s] passive    | loop p99 2.0 ms | state age p99 0.2 ms | step p99 0.50 ms | max torque asked 16 %
+[   32.3 s] passive    | loop p99 2.0 ms | state age p99 0.2 ms | step p99 0.48 ms | max torque asked 0 %
+[   33.3 s] passive    | loop p99 2.0 ms | state age p99 0.2 ms | step p99 0.49 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200242_suite_slow_mu1_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200242_suite_slow_mu1_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703762.874929 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_fwd_back_mu1_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu1_0.npz --exit-idle 3 --duration 120 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
+h +0 cm (profile fwd_back, segment 0) | loop p99 2.0 ms | state age p99 5.5 ms | step p99 1.14 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 5.4 ms | step p99 1.12 ms | max torque asked 31 %
+[   11.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.0 ms | state age p99 3.6 ms | step p99 1.10 ms | max torque asked 31 %
+[   12.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 3.5 ms | step p99 1.13 ms | max torque asked 33 %
+[   13.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 3.5 ms | step p99 1.10 ms | max torque asked 33 %
+[   14.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.0 ms | state age p99 5.3 ms | step p99 1.13 ms | max torque asked 32 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.0 ms | state age p99 3.5 ms | step p99 1.13 ms | max torque asked 32 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.1 ms | state age p99 5.5 ms | step p99 1.09 ms | max torque asked 25 %
+[   17.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 5.5 ms | step p99 1.12 ms | max torque asked 32 %
+[   18.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 5.5 ms | step p99 1.16 ms | max torque asked 30 %
+[   19.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.0 ms | state age p99 3.5 ms | step p99 1.13 ms | max torque asked 34 %
+[   20.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.0 ms | state age p99 3.5 ms | step p99 1.12 ms | max torque asked 34 %
+[   21.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 3.5 ms | step p99 1.15 ms | max torque asked 33 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.1 ms | state age p99 3.5 ms | step p99 1.11 ms | max torque asked 33 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.0 ms | state age p99 5.3 ms | step p99 1.12 ms | max torque asked 20 %
+[fsm  23.954 s] profile fwd_back ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.0 ms | state age p99 3.5 ms | step p99 1.15 ms | max torque asked 16 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 3.4 ms | step p99 1.13 ms | max torque asked 16 %
+[fsm  26.050 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.0 ms | state age p99 1.7 ms | step p99 1.06 ms | max torque asked 16 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.7 ms | step p99 0.61 ms | max torque asked 59 %
+[   28.3 s] sit_down   | loop p99 2.2 ms | state age p99 1.8 ms | step p99 0.61 ms | max torque asked 46 %
+[fsm  28.550 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 1.8 ms | step p99 0.58 ms | max torque asked 19 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 1.7 ms | step p99 0.59 ms | max torque asked 0 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 1.7 ms | step p99 0.57 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200322_suite_fwd_back_mu1_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200322_suite_fwd_back_mu1_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703802.542806 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_fwd_back_mu1_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu1_1.npz --exit-idle 3 --duration 120 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
+h +0 cm (profile fwd_back, segment 0) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.94 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 5.9 ms | step p99 0.95 ms | max torque asked 31 %
+[   11.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.91 ms | max torque asked 32 %
+[   12.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.86 ms | max torque asked 32 %
+[   13.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.88 ms | max torque asked 33 %
+[   14.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 5.9 ms | step p99 0.86 ms | max torque asked 33 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.3 ms | state age p99 6.0 ms | step p99 0.96 ms | max torque asked 35 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.93 ms | max torque asked 21 %
+[   17.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.92 ms | max torque asked 30 %
+[   18.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.89 ms | max torque asked 32 %
+[   19.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.93 ms | max torque asked 33 %
+[   20.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.96 ms | max torque asked 33 %
+[   21.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.3 ms | state age p99 5.9 ms | step p99 0.98 ms | max torque asked 33 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.87 ms | max torque asked 33 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.93 ms | max torque asked 21 %
+[fsm  23.952 s] profile fwd_back ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.85 ms | max torque asked 16 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.3 ms | state age p99 6.0 ms | step p99 0.92 ms | max torque asked 16 %
+[fsm  26.048 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.90 ms | max torque asked 15 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.60 ms | max torque asked 59 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.49 ms | max torque asked 44 %
+[fsm  28.550 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.51 ms | max torque asked 18 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 0.1 ms | step p99 0.45 ms | max torque asked 0 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 0.3 ms | step p99 0.37 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200400_suite_fwd_back_mu1_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200400_suite_fwd_back_mu1_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703840.181271 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_lateral_mu1_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu1_0.npz --exit-idle 3 --duration 120 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
+y +0.00 wz +0.00 dh +0 cm (profile lateral, segment 0) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.90 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.0 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 29 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.0 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 35 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.89 ms | max torque asked 37 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 37 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 38 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.89 ms | max torque asked 37 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 15 %
+[   17.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 19 %
+[   18.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.92 ms | max torque asked 39 %
+[   19.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 39 %
+[   20.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 39 %
+[   21.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.93 ms | max torque asked 39 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.83 ms | max torque asked 39 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.1 ms | state age p99 5.0 ms | step p99 0.85 ms | max torque asked 21 %
+[fsm  23.951 s] profile lateral ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.88 ms | max torque asked 17 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.0 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 17 %
+[fsm  26.049 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 4.9 ms | step p99 0.84 ms | max torque asked 17 %
+[   27.3 s] sit_down   | loop p99 2.0 ms | state age p99 1.0 ms | step p99 0.40 ms | max torque asked 50 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.40 ms | max torque asked 45 %
+[fsm  28.549 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.2 ms | state age p99 1.1 ms | step p99 0.40 ms | max torque asked 16 %
+[   30.3 s] passive    | loop p99 2.2 ms | state age p99 1.1 ms | step p99 0.38 ms | max torque asked 0 %
+[   31.3 s] passive    | loop p99 2.0 ms | state age p99 0.9 ms | step p99 0.32 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200437_suite_lateral_mu1_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200437_suite_lateral_mu1_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703877.852773 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_lateral_mu1_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu1_1.npz --exit-idle 3 --duration 120 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
+y +0.00 wz +0.00 dh +0 cm (profile lateral, segment 0) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.95 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.2 ms | state age p99 7.3 ms | step p99 0.95 ms | max torque asked 30 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.95 ms | max torque asked 37 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.96 ms | max torque asked 38 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.96 ms | max torque asked 38 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.96 ms | max torque asked 39 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.96 ms | max torque asked 36 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.2 ms | state age p99 7.3 ms | step p99 0.96 ms | max torque asked 15 %
+[   17.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.2 ms | state age p99 7.3 ms | step p99 0.98 ms | max torque asked 17 %
+[   18.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.98 ms | max torque asked 41 %
+[   19.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.94 ms | max torque asked 39 %
+[   20.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.92 ms | max torque asked 38 %
+[   21.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.2 ms | state age p99 7.3 ms | step p99 0.93 ms | max torque asked 39 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.94 ms | max torque asked 40 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.97 ms | max torque asked 19 %
+[fsm  23.952 s] profile lateral ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 7.2 ms | step p99 0.93 ms | max torque asked 19 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 7.3 ms | step p99 0.93 ms | max torque asked 19 %
+[fsm  26.048 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.2 ms | state age p99 5.3 ms | step p99 0.93 ms | max torque asked 19 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.3 ms | step p99 0.53 ms | max torque asked 53 %
+[   28.3 s] sit_down   | loop p99 2.2 ms | state age p99 1.3 ms | step p99 0.54 ms | max torque asked 48 %
+[fsm  28.548 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.2 ms | state age p99 1.5 ms | step p99 0.51 ms | max torque asked 16 %
+[   30.3 s] passive    | loop p99 2.2 ms | state age p99 1.5 ms | step p99 0.51 ms | max torque asked 0 %
+[   31.3 s] passive    | loop p99 2.2 ms | state age p99 1.5 ms | step p99 0.59 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200515_suite_lateral_mu1_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200515_suite_lateral_mu1_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703915.481521 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_yaw_mu1_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu1_0.npz --exit-idle 3 --duration 120 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+ 0.91 ms | max torque asked 12 %
+[    9.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 0) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.89 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.94 ms | max torque asked 34 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.2 ms | state age p99 5.4 ms | step p99 0.96 ms | max torque asked 41 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.2 ms | state age p99 9.4 ms | step p99 0.90 ms | max torque asked 43 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 9.3 ms | step p99 0.91 ms | max torque asked 44 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 9.3 ms | step p99 0.90 ms | max torque asked 44 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.2 ms | state age p99 7.3 ms | step p99 0.90 ms | max torque asked 43 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.1 ms | state age p99 9.3 ms | step p99 0.95 ms | max torque asked 14 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 7.4 ms | step p99 0.88 ms | max torque asked 24 %
+[   18.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.88 ms | max torque asked 56 %
+[   19.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.91 ms | max torque asked 51 %
+[   20.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.90 ms | max torque asked 52 %
+[   21.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.88 ms | max torque asked 48 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.92 ms | max torque asked 43 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 7.4 ms | step p99 0.90 ms | max torque asked 21 %
+[fsm  23.960 s] profile yaw ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 7.3 ms | step p99 0.88 ms | max torque asked 20 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 9.3 ms | step p99 0.89 ms | max torque asked 20 %
+[fsm  26.056 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 7.4 ms | step p99 0.88 ms | max torque asked 20 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.5 ms | step p99 0.41 ms | max torque asked 50 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.5 ms | step p99 0.43 ms | max torque asked 48 %
+[fsm  28.556 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 1.5 ms | step p99 0.40 ms | max torque asked 29 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 1.5 ms | step p99 0.38 ms | max torque asked 0 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 1.5 ms | step p99 0.38 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200553_suite_yaw_mu1_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200553_suite_yaw_mu1_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703953.147096 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_yaw_mu1_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu1_1.npz --exit-idle 3 --duration 120 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+ 0.88 ms | max torque asked 12 %
+[    9.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 0) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.86 ms | max torque asked 34 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.90 ms | max torque asked 41 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.87 ms | max torque asked 44 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.2 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 43 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.90 ms | max torque asked 42 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.87 ms | max torque asked 44 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 14 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.2 ms | state age p99 6.8 ms | step p99 0.90 ms | max torque asked 23 %
+[   18.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 58 %
+[   19.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 53 %
+[   20.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.92 ms | max torque asked 53 %
+[   21.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 49 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 36 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.89 ms | max torque asked 22 %
+[fsm  23.976 s] profile yaw ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 22 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 21 %
+[fsm  26.074 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.85 ms | max torque asked 21 %
+[   27.3 s] sit_down   | loop p99 2.2 ms | state age p99 1.1 ms | step p99 0.42 ms | max torque asked 49 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.0 ms | step p99 0.40 ms | max torque asked 44 %
+[fsm  28.574 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.39 ms | max torque asked 30 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.36 ms | max torque asked 0 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.36 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200630_suite_yaw_mu1_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200630_suite_yaw_mu1_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793703990.817127 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_stand60_mu04_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu04_0.npz --exit-idle 3 --duration 164 --seed 0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
++0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.90 ms | max torque asked 11 %
+[   54.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 11 %
+[   55.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.85 ms | max torque asked 11 %
+[   56.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.89 ms | max torque asked 11 %
+[   57.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.84 ms | max torque asked 11 %
+[   58.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.86 ms | max torque asked 11 %
+[   59.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.88 ms | max torque asked 11 %
+[   60.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 11 %
+[   61.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 4.6 ms | step p99 0.85 ms | max torque asked 11 %
+[   62.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.93 ms | max torque asked 11 %
+[   63.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.4 ms | step p99 0.85 ms | max torque asked 11 %
+[   64.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.84 ms | max torque asked 11 %
+[   65.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.93 ms | max torque asked 11 %
+[   66.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.88 ms | max torque asked 11 %
+[   67.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.84 ms | max torque asked 11 %
+[fsm  67.950 s] profile stand60 ended: done
+[   68.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.92 ms | max torque asked 11 %
+[   69.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.5 ms | step p99 0.84 ms | max torque asked 11 %
+[fsm  70.048 s] -> sit_down (L1+R1)
+[   70.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.84 ms | max torque asked 13 %
+[   71.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.39 ms | max torque asked 20 %
+[   72.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.37 ms | max torque asked 20 %
+[fsm  72.548 s] -> passive (sit-down done)
+[   73.3 s] passive    | loop p99 2.0 ms | state age p99 0.6 ms | step p99 0.36 ms | max torque asked 15 %
+[   74.3 s] passive    | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.35 ms | max torque asked 1 %
+[   75.3 s] passive    | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.35 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200708_suite_stand60_mu04_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200708_suite_stand60_mu04_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704028.472026 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_stand60_mu04_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu04_1.npz --exit-idle 3 --duration 164 --seed 1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
++0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 0.94 ms | max torque asked 11 %
+[   54.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.87 ms | max torque asked 11 %
+[   55.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 11 %
+[   56.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 0.92 ms | max torque asked 11 %
+[   57.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.9 ms | step p99 0.86 ms | max torque asked 11 %
+[   58.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.64 ms | max torque asked 11 %
+[   59.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.69 ms | max torque asked 11 %
+[   60.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.9 ms | step p99 0.66 ms | max torque asked 11 %
+[   61.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 2.9 ms | step p99 0.65 ms | max torque asked 11 %
+[   62.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 4.8 ms | step p99 0.67 ms | max torque asked 11 %
+[   63.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 4.8 ms | step p99 0.65 ms | max torque asked 11 %
+[   64.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 5.0 ms | step p99 0.65 ms | max torque asked 11 %
+[   65.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 4.9 ms | step p99 0.69 ms | max torque asked 11 %
+[   66.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 6.7 ms | step p99 0.66 ms | max torque asked 11 %
+[   67.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile stand60, segment 0) | loop p99 2.2 ms | state age p99 4.8 ms | step p99 0.65 ms | max torque asked 11 %
+[fsm  67.949 s] profile stand60 ended: done
+[   68.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.9 ms | step p99 0.67 ms | max torque asked 11 %
+[   69.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 5.0 ms | step p99 0.64 ms | max torque asked 11 %
+[fsm  70.049 s] -> sit_down (L1+R1)
+[   70.3 s] sit_down   | loop p99 2.2 ms | state age p99 4.8 ms | step p99 0.64 ms | max torque asked 13 %
+[   71.3 s] sit_down   | loop p99 2.0 ms | state age p99 1.2 ms | step p99 0.27 ms | max torque asked 20 %
+[   72.3 s] sit_down   | loop p99 2.0 ms | state age p99 1.1 ms | step p99 0.25 ms | max torque asked 20 %
+[fsm  72.551 s] -> passive (sit-down done)
+[   73.3 s] passive    | loop p99 2.0 ms | state age p99 1.2 ms | step p99 0.24 ms | max torque asked 15 %
+[   74.3 s] passive    | loop p99 2.1 ms | state age p99 1.2 ms | step p99 0.25 ms | max torque asked 1 %
+[   75.3 s] passive    | loop p99 2.0 ms | state age p99 1.2 ms | step p99 0.21 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200830_suite_stand60_mu04_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200830_suite_stand60_mu04_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704110.219847 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_slow_mu04_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu04_0.npz --exit-idle 3 --duration 122 --seed 0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+e asked 15 %
+[   11.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 6.3 ms | step p99 0.89 ms | max torque asked 30 %
+[   12.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.3 ms | step p99 0.85 ms | max torque asked 27 %
+[   13.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 4.3 ms | step p99 0.93 ms | max torque asked 26 %
+[   14.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.3 ms | step p99 0.87 ms | max torque asked 26 %
+[   15.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.1 ms | step p99 0.87 ms | max torque asked 27 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.2 ms | state age p99 6.3 ms | step p99 0.90 ms | max torque asked 26 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.1 ms | state age p99 6.3 ms | step p99 0.87 ms | max torque asked 16 %
+[   18.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 4.4 ms | step p99 0.86 ms | max torque asked 17 %
+[   19.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 4.3 ms | step p99 0.91 ms | max torque asked 29 %
+[   20.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.86 ms | max torque asked 28 %
+[   21.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.3 ms | step p99 0.85 ms | max torque asked 27 %
+[   22.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.1 ms | state age p99 6.3 ms | step p99 0.94 ms | max torque asked 28 %
+[   23.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.3 ms | step p99 0.97 ms | max torque asked 27 %
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.1 ms | state age p99 4.4 ms | step p99 0.87 ms | max torque asked 27 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.1 ms | state age p99 6.3 ms | step p99 0.86 ms | max torque asked 19 %
+[fsm  25.952 s] profile slow ended: done
+[   26.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.3 ms | step p99 0.90 ms | max torque asked 17 %
+[   27.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 4.3 ms | step p99 0.87 ms | max torque asked 17 %
+[fsm  28.049 s] -> sit_down (L1+R1)
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 2.4 ms | step p99 0.82 ms | max torque asked 17 %
+[   29.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.46 ms | max torque asked 34 %
+[   30.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.59 ms | max torque asked 22 %
+[fsm  30.550 s] -> passive (sit-down done)
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.45 ms | max torque asked 14 %
+[   32.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.58 ms | max torque asked 2 %
+[   33.3 s] passive    | loop p99 2.0 ms | state age p99 0.5 ms | step p99 0.47 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200951_suite_slow_mu04_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200951_suite_slow_mu04_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704191.997530 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_slow_mu04_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu04_1.npz --exit-idle 3 --duration 122 --seed 1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+e asked 15 %
+[   11.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 1.09 ms | max torque asked 30 %
+[   12.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 4.2 ms | step p99 0.87 ms | max torque asked 26 %
+[   13.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 8.1 ms | step p99 0.88 ms | max torque asked 27 %
+[   14.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.1 ms | state age p99 4.2 ms | step p99 0.86 ms | max torque asked 27 %
+[   15.3 s] policy     | cmd vx +0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 1) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.89 ms | max torque asked 27 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.1 ms | state age p99 6.2 ms | step p99 0.92 ms | max torque asked 27 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 2) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.88 ms | max torque asked 16 %
+[   18.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 1.17 ms | max torque asked 16 %
+[   19.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 1.12 ms | max torque asked 29 %
+[   20.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.1 ms | step p99 0.88 ms | max torque asked 27 %
+[   21.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 4.2 ms | step p99 0.86 ms | max torque asked 28 %
+[   22.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.3 ms | step p99 0.89 ms | max torque asked 27 %
+[   23.3 s] policy     | cmd vx -0.25 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 3) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.88 ms | max torque asked 28 %
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.88 ms | max torque asked 27 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile slow, segment 4) | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.94 ms | max torque asked 19 %
+[fsm  25.950 s] profile slow ended: done
+[   26.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.2 ms | step p99 1.05 ms | max torque asked 18 %
+[   27.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.1 ms | step p99 1.02 ms | max torque asked 18 %
+[fsm  28.048 s] -> sit_down (L1+R1)
+[   28.3 s] sit_down   | loop p99 2.2 ms | state age p99 6.2 ms | step p99 0.90 ms | max torque asked 18 %
+[   29.3 s] sit_down   | loop p99 2.2 ms | state age p99 0.4 ms | step p99 0.52 ms | max torque asked 34 %
+[   30.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.4 ms | step p99 0.42 ms | max torque asked 22 %
+[fsm  30.548 s] -> passive (sit-down done)
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.41 ms | max torque asked 14 %
+[   32.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.37 ms | max torque asked 2 %
+[   33.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.37 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201031_suite_slow_mu04_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201031_suite_slow_mu04_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704231.687397 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_fwd_back_mu04_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu04_0.npz --exit-idle 3 --duration 120 --seed 0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
++0 cm (profile fwd_back, segment 0) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.86 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 1.10 ms | max torque asked 30 %
+[   11.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.87 ms | max torque asked 32 %
+[   12.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.87 ms | max torque asked 34 %
+[   13.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.92 ms | max torque asked 34 %
+[   14.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.86 ms | max torque asked 34 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.2 ms | state age p99 6.8 ms | step p99 1.08 ms | max torque asked 33 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 1.01 ms | max torque asked 14 %
+[   17.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.93 ms | max torque asked 30 %
+[   18.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.9 ms | step p99 1.03 ms | max torque asked 34 %
+[   19.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 0.92 ms | max torque asked 32 %
+[   20.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 4.9 ms | step p99 0.88 ms | max torque asked 33 %
+[   21.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 4.9 ms | step p99 0.87 ms | max torque asked 33 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.93 ms | max torque asked 32 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.1 ms | state age p99 4.9 ms | step p99 0.90 ms | max torque asked 19 %
+[fsm  23.963 s] profile fwd_back ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.8 ms | step p99 0.89 ms | max torque asked 18 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.94 ms | max torque asked 17 %
+[fsm  26.061 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.9 ms | step p99 0.85 ms | max torque asked 17 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.40 ms | max torque asked 35 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.44 ms | max torque asked 25 %
+[fsm  28.561 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.2 ms | state age p99 1.2 ms | step p99 0.39 ms | max torque asked 14 %
+[   30.3 s] passive    | loop p99 2.2 ms | state age p99 1.2 ms | step p99 0.37 ms | max torque asked 2 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.41 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201111_suite_fwd_back_mu04_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201111_suite_fwd_back_mu04_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704271.385313 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_fwd_back_mu04_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu04_1.npz --exit-idle 3 --duration 120 --seed 1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
++0 cm (profile fwd_back, segment 0) | loop p99 2.2 ms | state age p99 8.5 ms | step p99 1.19 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 1.11 ms | max torque asked 30 %
+[   11.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 8.5 ms | step p99 1.18 ms | max torque asked 33 %
+[   12.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 8.4 ms | step p99 1.09 ms | max torque asked 34 %
+[   13.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.1 ms | state age p99 8.4 ms | step p99 1.15 ms | max torque asked 34 %
+[   14.3 s] policy     | cmd vx +0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 1) | loop p99 2.2 ms | state age p99 8.4 ms | step p99 1.13 ms | max torque asked 34 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.2 ms | state age p99 8.4 ms | step p99 1.10 ms | max torque asked 33 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 2) | loop p99 2.1 ms | state age p99 6.5 ms | step p99 0.97 ms | max torque asked 15 %
+[   17.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.2 ms | state age p99 6.4 ms | step p99 0.87 ms | max torque asked 28 %
+[   18.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.89 ms | max torque asked 39 %
+[   19.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.87 ms | max torque asked 33 %
+[   20.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.89 ms | max torque asked 33 %
+[   21.3 s] policy     | cmd vx -0.50 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 3) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.90 ms | max torque asked 33 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.86 ms | max torque asked 33 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile fwd_back, segment 4) | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.88 ms | max torque asked 15 %
+[fsm  23.953 s] profile fwd_back ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.2 ms | state age p99 6.4 ms | step p99 0.91 ms | max torque asked 14 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.85 ms | max torque asked 13 %
+[fsm  26.051 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.4 ms | step p99 0.85 ms | max torque asked 14 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.41 ms | max torque asked 27 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.39 ms | max torque asked 19 %
+[fsm  28.553 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 0.5 ms | step p99 0.37 ms | max torque asked 14 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.49 ms | max torque asked 2 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 0.6 ms | step p99 0.50 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201148_suite_fwd_back_mu04_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201148_suite_fwd_back_mu04_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704308.537846 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_lateral_mu04_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu04_0.npz --exit-idle 3 --duration 120 --seed 0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
++0.00 wz +0.00 dh +0 cm (profile lateral, segment 0) | loop p99 2.8 ms | state age p99 3.7 ms | step p99 2.70 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.3 ms | state age p99 5.4 ms | step p99 1.37 ms | max torque asked 18 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.3 ms | state age p99 5.5 ms | step p99 1.62 ms | max torque asked 41 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.3 ms | state age p99 3.2 ms | step p99 1.45 ms | max torque asked 39 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.2 ms | state age p99 5.5 ms | step p99 1.38 ms | max torque asked 37 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.3 ms | state age p99 5.8 ms | step p99 1.32 ms | max torque asked 36 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.3 ms | state age p99 1.8 ms | step p99 1.38 ms | max torque asked 35 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.0 ms | state age p99 3.7 ms | step p99 1.13 ms | max torque asked 16 %
+[   17.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.3 ms | state age p99 5.3 ms | step p99 1.47 ms | max torque asked 27 %
+[   18.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.3 ms | state age p99 3.9 ms | step p99 1.28 ms | max torque asked 39 %
+[   19.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.3 ms | state age p99 3.3 ms | step p99 1.22 ms | max torque asked 39 %
+[   20.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.8 ms | state age p99 1.8 ms | step p99 2.71 ms | max torque asked 39 %
+[   21.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.3 ms | state age p99 1.7 ms | step p99 1.26 ms | max torque asked 39 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.8 ms | state age p99 1.8 ms | step p99 2.72 ms | max torque asked 39 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.3 ms | state age p99 3.7 ms | step p99 1.26 ms | max torque asked 22 %
+[fsm  23.951 s] profile lateral ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.7 ms | state age p99 3.6 ms | step p99 2.69 ms | max torque asked 21 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.8 ms | state age p99 3.6 ms | step p99 2.73 ms | max torque asked 21 %
+[fsm  26.049 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.3 ms | state age p99 3.5 ms | step p99 1.22 ms | max torque asked 21 %
+[   27.3 s] sit_down   | loop p99 2.3 ms | state age p99 1.8 ms | step p99 0.71 ms | max torque asked 24 %
+[   28.3 s] sit_down   | loop p99 2.2 ms | state age p99 1.8 ms | step p99 0.71 ms | max torque asked 20 %
+[fsm  28.549 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.3 ms | state age p99 1.8 ms | step p99 0.59 ms | max torque asked 17 %
+[   30.3 s] passive    | loop p99 2.0 ms | state age p99 1.7 ms | step p99 0.56 ms | max torque asked 1 %
+[   31.3 s] passive    | loop p99 2.2 ms | state age p99 1.8 ms | step p99 0.57 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201226_suite_lateral_mu04_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201226_suite_lateral_mu04_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704346.180051 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_lateral_mu04_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu04_1.npz --exit-idle 3 --duration 120 --seed 1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
++0.00 wz +0.00 dh +0 cm (profile lateral, segment 0) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.26 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.26 ms | max torque asked 18 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.23 ms | max torque asked 41 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.0 ms | state age p99 6.8 ms | step p99 1.13 ms | max torque asked 39 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 1.07 ms | max torque asked 36 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.30 wz +0.00 dh +0 cm (profile lateral, segment 1) | loop p99 2.0 ms | state age p99 2.8 ms | step p99 1.03 ms | max torque asked 36 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 1.04 ms | max torque asked 37 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 2) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.03 ms | max torque asked 16 %
+[   17.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.13 ms | max torque asked 25 %
+[   18.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.26 ms | max torque asked 39 %
+[   19.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.28 ms | max torque asked 39 %
+[   20.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.6 ms | step p99 1.13 ms | max torque asked 39 %
+[   21.3 s] policy     | cmd vx +0.00 vy -0.30 wz +0.00 dh +0 cm (profile lateral, segment 3) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.07 ms | max torque asked 39 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.1 ms | state age p99 6.7 ms | step p99 1.07 ms | max torque asked 40 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile lateral, segment 4) | loop p99 2.1 ms | state age p99 6.8 ms | step p99 1.03 ms | max torque asked 22 %
+[fsm  23.958 s] profile lateral ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.0 ms | state age p99 6.8 ms | step p99 1.03 ms | max torque asked 22 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.0 ms | state age p99 6.7 ms | step p99 1.03 ms | max torque asked 22 %
+[fsm  26.056 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 6.5 ms | step p99 1.01 ms | max torque asked 22 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.0 ms | step p99 0.46 ms | max torque asked 24 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 1.1 ms | step p99 0.50 ms | max torque asked 20 %
+[fsm  28.556 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 1.0 ms | step p99 0.46 ms | max torque asked 17 %
+[   30.3 s] passive    | loop p99 2.2 ms | state age p99 0.9 ms | step p99 0.44 ms | max torque asked 1 %
+[   31.3 s] passive    | loop p99 2.2 ms | state age p99 1.0 ms | step p99 0.45 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201303_suite_lateral_mu04_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201303_suite_lateral_mu04_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704383.321057 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_yaw_mu04_0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu04_0.npz --exit-idle 3 --duration 120 --seed 0
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+8 ms | max torque asked 12 %
+[    9.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 0) | loop p99 2.2 ms | state age p99 10.3 ms | step p99 1.11 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 4.0 ms | step p99 0.90 ms | max torque asked 27 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 4.3 ms | step p99 0.90 ms | max torque asked 41 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 2.1 ms | step p99 0.94 ms | max torque asked 41 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 2.2 ms | step p99 0.88 ms | max torque asked 42 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 4.2 ms | step p99 0.91 ms | max torque asked 42 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.2 ms | state age p99 4.2 ms | step p99 0.94 ms | max torque asked 40 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.1 ms | state age p99 2.3 ms | step p99 0.87 ms | max torque asked 14 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 4.2 ms | step p99 0.86 ms | max torque asked 26 %
+[   18.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 4.1 ms | step p99 0.96 ms | max torque asked 53 %
+[   19.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 2.2 ms | step p99 0.87 ms | max torque asked 46 %
+[   20.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 2.3 ms | step p99 0.87 ms | max torque asked 43 %
+[   21.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 4.2 ms | step p99 0.94 ms | max torque asked 42 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 2.2 ms | step p99 0.90 ms | max torque asked 41 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 4.3 ms | step p99 0.91 ms | max torque asked 16 %
+[fsm  23.965 s] profile yaw ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.0 ms | step p99 0.95 ms | max torque asked 15 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 4.3 ms | step p99 0.90 ms | max torque asked 15 %
+[fsm  26.063 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.4 ms | step p99 0.85 ms | max torque asked 15 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.3 ms | step p99 0.43 ms | max torque asked 23 %
+[   28.3 s] sit_down   | loop p99 2.0 ms | state age p99 0.3 ms | step p99 0.40 ms | max torque asked 19 %
+[fsm  28.565 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 0.3 ms | step p99 0.40 ms | max torque asked 13 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 0.4 ms | step p99 0.52 ms | max torque asked 12 %
+[   31.3 s] passive    | loop p99 2.1 ms | state age p99 0.4 ms | step p99 0.41 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201340_suite_yaw_mu04_0.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201340_suite_yaw_mu04_0.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704420.958901 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+
+##### suite_yaw_mu04_1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu04_1.npz --exit-idle 3 --duration 120 --seed 1
+$ /home/rbuche/miniforge3/envs/go2deploy/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+.88 ms | max torque asked 12 %
+[    9.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 0) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.88 ms | max torque asked 12 %
+[   10.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 6.0 ms | step p99 0.87 ms | max torque asked 27 %
+[   11.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.90 ms | max torque asked 38 %
+[   12.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.1 ms | state age p99 6.0 ms | step p99 0.89 ms | max torque asked 42 %
+[   13.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.2 ms | state age p99 5.8 ms | step p99 0.86 ms | max torque asked 41 %
+[   14.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.60 dh +0 cm (profile yaw, segment 1) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.95 ms | max torque asked 43 %
+[   15.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.92 ms | max torque asked 40 %
+[   16.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 2) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 1.02 ms | max torque asked 14 %
+[   17.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.1 ms | state age p99 5.9 ms | step p99 0.89 ms | max torque asked 32 %
+[   18.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.2 ms | state age p99 4.1 ms | step p99 0.93 ms | max torque asked 44 %
+[   19.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.89 ms | max torque asked 41 %
+[   20.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.95 ms | max torque asked 42 %
+[   21.3 s] policy     | cmd vx +0.00 vy +0.00 wz -0.60 dh +0 cm (profile yaw, segment 3) | loop p99 2.2 ms | state age p99 4.0 ms | step p99 0.92 ms | max torque asked 40 %
+[   22.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.1 ms | state age p99 6.0 ms | step p99 0.93 ms | max torque asked 41 %
+[   23.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm (profile yaw, segment 4) | loop p99 2.2 ms | state age p99 6.0 ms | step p99 0.89 ms | max torque asked 15 %
+[fsm  23.953 s] profile yaw ended: done
+[   24.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 4.1 ms | step p99 0.87 ms | max torque asked 15 %
+[   25.3 s] policy     | cmd vx +0.00 vy +0.00 wz +0.00 dh +0 cm | loop p99 2.1 ms | state age p99 6.0 ms | step p99 0.90 ms | max torque asked 15 %
+[fsm  26.049 s] -> sit_down (L1+R1)
+[   26.3 s] sit_down   | loop p99 2.1 ms | state age p99 4.1 ms | step p99 0.90 ms | max torque asked 15 %
+[   27.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.40 ms | max torque asked 25 %
+[   28.3 s] sit_down   | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.41 ms | max torque asked 19 %
+[fsm  28.549 s] -> passive (sit-down done)
+[   29.3 s] passive    | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.40 ms | max torque asked 14 %
+[   30.3 s] passive    | loop p99 2.1 ms | state age p99 0.2 ms | step p99 0.44 ms | max torque asked 2 %
+[   31.3 s] passive    | loop p99 2.0 ms | state age p99 0.2 ms | step p99 0.36 ms | max torque asked 0 %
+stopped in damping mode (the robot is limp: restart sport mode from the app or power-cycle)
+log saved to /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201418_suite_yaw_mu04_1.npz  (python go2_analyze.py /home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201418_suite_yaw_mu04_1.npz)
+/home/rbuche/miniforge3/envs/go2deploy/lib/python3.11/site-packages/torch/jit/_serialization.py:176: FutureWarning: `torch.jit.load` is deprecated. Please switch to `torch.export`.
+  warnings.warn(
+1793704458.639792 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast

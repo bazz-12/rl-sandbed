@@ -1,0 +1,25 @@
+1793927028.180627 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.17)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+unitree_mujoco headless: scene_flat.xml, physics 2.0 ms, foot friction 1, motor strength x0.75, domain 1 on lo
+[   2.6 s] real-time factor 1.00 | base z 0.108 m | rt/lowcmd 107 Hz
+[   4.6 s] real-time factor 1.00 | base z 0.179 m | rt/lowcmd 499 Hz
+[   6.6 s] real-time factor 1.00 | base z 0.320 m | rt/lowcmd 499 Hz
+[   8.6 s] real-time factor 1.00 | base z 0.316 m | rt/lowcmd 478 Hz
+[  10.6 s] real-time factor 1.00 | base z 0.316 m | rt/lowcmd 464 Hz
+[  12.6 s] real-time factor 1.00 | base z 0.293 m | rt/lowcmd 469 Hz
+[  14.6 s] real-time factor 1.00 | base z 0.290 m | rt/lowcmd 465 Hz
+[  16.6 s] real-time factor 1.00 | base z 0.294 m | rt/lowcmd 466 Hz
+[  18.6 s] real-time factor 1.00 | base z 0.317 m | rt/lowcmd 468 Hz
+[  20.6 s] real-time factor 1.00 | base z 0.296 m | rt/lowcmd 469 Hz
+[  22.6 s] real-time factor 1.00 | base z 0.296 m | rt/lowcmd 482 Hz
+[  24.6 s] real-time factor 1.00 | base z 0.320 m | rt/lowcmd 474 Hz
+[  26.6 s] real-time factor 1.00 | base z 0.319 m | rt/lowcmd 460 Hz
+[  28.6 s] real-time factor 1.00 | base z 0.274 m | rt/lowcmd 474 Hz
+[  30.6 s] real-time factor 1.00 | base z 0.104 m | rt/lowcmd 500 Hz
+[  32.7 s] real-time factor 1.00 | base z 0.104 m | rt/lowcmd 500 Hz
+[  34.7 s] real-time factor 1.00 | base z 0.103 m | rt/lowcmd 399 Hz
+[  36.7 s] real-time factor 1.00 | base z 0.103 m | rt/lowcmd 0 Hz
+no rt/lowcmd for 3 s: done
+stopped: 36.6 s simulated, real-time factor 1.000
+ground truth saved to /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_weak75_1.npz

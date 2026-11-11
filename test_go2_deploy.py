@@ -1,7 +1,7 @@
 """
 test_go2_deploy.py - [S2R] Checks of the deploy-side logic that need neither a robot nor a simulator.
 
-    python test_go2_deploy.py                         # state machine, inputs, kinematics, log format
+    python test_go2_deploy.py                         # state machine, inputs, kinematics, log format, gait clock
     python test_go2_deploy.py --policy logs/<exp>/exported   # the same on your exported policy (else a synthetic cfg)
     python test_go2_deploy.py --dds                   # + the deploy loop's error path over DDS (loopback, domain 99)
 
@@ -225,6 +225,59 @@ def test_policy_observation(policy_dir):
     ok(f"exported policy: {p.n_obs} observations, deterministic after reset(), inference {1e3 * p.last_infer_s:.2f} ms")
 
 
+def test_gait_clock():
+    """[P2.4] The robot-side gait clock of --gait wtw exports, and go2_analyze.py's gait columns."""
+    from types import SimpleNamespace
+
+    import go2_analyze as A
+
+    clock = {"feet": ["FL", "FR", "RL", "RR"], "offsets": [0.5, 0.0, 0.0, 0.5], "frequency": 2.0, "duty": 0.5}
+    cfg = dict(synthetic_cfg(), gait_clock=clock)
+    p = Policy(deploy_cfg=cfg)
+    assert p.n_obs == 45 + 8
+    q0 = np.asarray(cfg["default_joint_angles"])
+    obs, ts = [], []
+    for k in range(30):
+        p.step(np.zeros(3), LEVEL, q0, np.zeros(12), np.zeros(3))
+        obs.append(p.last_obs)
+        ts.append(k * cfg["policy_dt"])
+    o = obs[0][-8:]  # phase 0: FL, RR half a cycle on (swing starts), FR, RL at the start of stance
+    assert np.allclose(o[:4], 0.0, atol=1e-6) and np.allclose(o[4:], [-1, 1, 1, -1], atol=1e-6), o
+    assert np.isclose(p.phase, (30 * 0.02 * 2.0) % 1.0) and p.steps_since_reset == 30
+    p.reset()
+    assert p.phase == 0.0 and p.steps_since_reset == 0
+    ok("gait clock: 53 observations, phase 0 at reset, + f x dt per policy step")
+
+    b = Bench(None)
+    b.policy = b.fsm.policy = Policy(deploy_cfg=cfg)
+    b.policy_mode()
+    b.run(0.5)
+    assert b.policy.last_obs.shape == (53,) and b.policy.steps_since_reset > 0
+    b.run(0.5, ("L1", "R2"))
+    b.run(3.0)
+    b.run(1.0, ("L1", "A"))
+    assert b.policy.steps_since_reset <= 26, b.policy.steps_since_reset  # restarted at the second policy entry
+    ok("state machine: the clock restarts at every policy start")
+
+    # go2_analyze.clock_stance: the stance the clock asks for, from the logged observations, between policy steps
+    run = SimpleNamespace(p={"t": np.array(ts), "obs": np.array(obs)})
+    tg = np.arange(0.0, 0.58, 1.0 / A.GRID_HZ)
+    want = A.clock_stance(run, tg, clock)
+    raw = np.mod(tg[:, None] * 2.0 + np.array([0.0, 0.5, 0.5, 0.0]), 1.0)  # legs FR, FL, RR, RL
+    assert np.mean(want == (raw < 0.5)) > 0.98, np.mean(want == (raw < 0.5))
+    ok("go2_analyze clock_stance: the clock's stance recovered from the logged observations")
+
+    # go2_analyze.gait_pattern on a synthetic 2 Hz trot (legs FR, FL, RR, RL): FR-RL together, FL-RR half a cycle later
+    t = np.arange(0.0, 4.0, 1.0 / A.GRID_HZ)
+    st = np.mod(t[:, None] * 2.0 + np.array([0.0, 0.5, 0.5, 0.0]), 1.0) < 0.5
+    m = A.gait_pattern(st, np.array([0.5, 0.0, 0.0]))
+    assert abs(m["air_t[s]"] - 0.25) < 0.01 and m["diag_sync[%]"] > 99.0 and m["air_asym[%]"] < 1.0, m
+    assert m["air_cv[%]"] < 2.0, m
+    pace = np.mod(t[:, None] * 2.0 + np.array([0.0, 0.5, 0.0, 0.5]), 1.0) < 0.5  # FR-RR together: a pace
+    assert A.gait_pattern(pace, np.array([0.5, 0.0, 0.0]))["diag_sync[%]"] < 1.0
+    ok("go2_analyze gait_pattern: trot -> air_t 0.25 s, diag_sync 100 %, pace -> 0 %")
+
+
 def test_kinematics():
     rng = np.random.default_rng(1)
     q = np.tile([0.0, 0.8, -1.5], 4) + 0.2 * rng.standard_normal((5, 12))
@@ -348,6 +401,7 @@ def main():
     test_profile(args.policy)
     test_joint_test(args.policy)
     test_policy_observation(args.policy)
+    test_gait_clock()  # [P2.4]
     test_kinematics()
     test_sim_models()
     test_log()

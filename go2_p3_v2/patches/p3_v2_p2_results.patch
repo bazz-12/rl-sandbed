@@ -1,0 +1,1351 @@
+diff -ruN a/CHANGES.md b/CHANGES.md
+--- a/CHANGES.md	2026-11-06 11:42:25.434732499 +0900
++++ b/CHANGES.md	2026-11-06 11:42:25.437782910 +0900
+@@ -1,6 +1,6 @@
+-# Go2 locomotion: P1.1 to P1.6 and P3.1 to P3.4 changes
++# Go2 locomotion: P1.1 to P1.6, P3.1 to P3.4 and P3 v2 changes
+ 
+-**P3.1** (curriculum training on terrain), **P3.2** (foot slip from ground truth, and the foot-slip penalty decision), **P3.3** (privileged observations for the critic and a teacher) and **P3.4** (Baseline v1.0: provenance, checked ONNX export, harness report, config card, git tag) are the sections after P1.6. They build on the P2 code (P2 is documented in `TEST_AND_TINKER_P2.md`), and their companion guide is `TEST_AND_TINKER_P3.md`.
++**P3.1** (curriculum training on terrain), **P3.2** (foot slip from ground truth, and the foot-slip penalty decision), **P3.3** (privileged observations for the critic and a teacher) and **P3.4** (Baseline v1.0: provenance, checked ONNX export, harness report, config card, git tag) are the sections after P1.6; **P3 v2** applies your P2 results to them. They build on the P2 code (P2 is documented in `TEST_AND_TINKER_P2.md`), and their companion guide is `TEST_AND_TINKER_P3.md`.
+ 
+ Base: your `go2_env.py`, `go2_train.py`, `go2_eval.py` and `go2_metrics.py` (Genesis 1.4.2, rsl-rl-lib 5.5.1).
+ 
+@@ -1042,6 +1042,75 @@
+ - `git push` and `gh release create` (the card prints them; nothing is pushed from here).
+ - `policy.onnx` in a C++ runtime or on the robot computer.
+ 
++## P3 v2: the P2 results applied (2026-11-06)
++
++Your P2 results (`P2_SUMMARY.md`) changed what P3 should assume and how it should judge. P3 v2 applies its "What this means for P3" list. It adds no training feature: default flags still train bit for bit as in P2, and `$BASE` now carries the P2 choices. Every change is tagged `[P3v2]`; the guide's section 2 lists them, and each section of `TEST_AND_TINKER_P3.md` explains its own.
++
++In the bundle, `p3_v2/` is the complete, runnable snapshot. `patches/p3_v2_p2_results.patch` holds P3 v2 against the P3.4 files: apply it after `p3_4_baseline.patch`.
++
++```
++BASE="--seed 1 --symmetry --energy 1.5e-3"     # the P2 choices
++P2=go2-p25-w1.5e-3; P2S2=go2-p25-s2            # the final P2 policy and its second seed
++DEPLOY_PY=$(conda run -n go2deploy which python)
++python go2_decide.py slip --off go2-p32 go2-p32-s2 go2-p32-s3 --on go2-p32-slip go2-p32-slip-s2 go2-p32-slip-s3 --ckpt 1999
++python go2_report.py -e go2-v1.0 --ckpt 1999 --seeds go2-v1.0-s2 go2-v1.0-s3 --gate ~/unitree_mujoco --deploy-python $DEPLOY_PY
++python go2_report.py -e go2-v2 --ckpt 1999 --seeds go2-v2-s2 go2-v2-s3 --ref baselines/v1.0
++python go2_train.py -e go2-p31-noE $BASE --energy 0 --terrain --cmd-curriculum   # only if hill / pit levels stall
++```
++
++### What changes, and why
++
++| P2 finding | Change |
++|---|---|
++| Final P2 configuration `--symmetry --energy 1.5e-3`; final policy `go2-p25-w1.5e-3` (seed 2: `go2-p25-s2`); no `go2-p2` run | Guide: `$BASE`, `$P2`, `$P2S2`; P3.1 compared with both P2 seeds |
++| Training noise far above evaluation noise: over 3 identical trainings `lin_err` at 0.5 m/s 0.060–0.085, CoT at 1 m/s 0.595–0.706 | `go2_decide.py`: a cost counts only if it is beyond its tolerance **and** every --on seed is worse than every --off seed; 3 seeds per arm |
++| One candidate against one baseline run is not a result | `go2_report.py --seeds`: seed band and verdicts; `go2_card.py`: checklist line `seed band` |
++| Two conda environments; the first P2 batch failed with `No module named 'unitree_sdk2py'` | `go2_report.py --deploy-python` (default `$DEPLOY_PY`), checked before the evaluation |
++| Two MuJoCo batches in parallel make the results invalid | `go2_sim_suite.py`: one battery at a time (a lock) |
++| Energy may slow the terrain curriculum (expected, not tested) | Guide: what to watch (4.5, 4.9); `--energy 0` removes the term from `$BASE` for a comparison run |
++| Energy and the foot-slip penalty both price foot motion | Both slip arms with `$BASE`; `stride` and `swing_h` on every terrain world of the slip record |
++| Slow, lateral and turning commands still undershoot; a privileged critic is one candidate | The critic record shows them (not judged) |
++| `--air-time-max` help overstated the uncapped term | Help text corrected |
++
++1. **Decisions against the training noise.** Until P3.4, a cost failed as soon as the --on mean was beyond its tolerance (`lin_err` +5 % and +0.005 m/s, CoT +5 %, through −5 points, a foot's slip +10 %; for the critic: learning 5 % later, final reward −2 %, terrain level −0.2). P2's noise is larger than those tolerances, so with 2 seeds per arm the rule would often DROP a feature for noise. Now a cost also needs **every --on seed worse than every --off seed**. With no real effect that happens by chance 1 / C(n_on + n_off, n_on): 1 in 6 with 2 + 2 seeds, 1 in 20 with 3 + 3. The benefit criterion of the slip rule already asked for the same separation, and is unchanged. The record states the seed counts and that rate; below 3 seeds per arm the script says so. The price: a small real cost inside the seed spread passes. That is what the seeds can resolve, and the record keeps every seed's value.
++2. **Seed bands in the report.** `--seeds EXP-s2 EXP-s3` adds the other training seeds of the configuration (their reports first). `REPORT.md` gets every headline number per run, the mean and the range; `summary.json` a `"band"`. The seeds' configurations are compared with this run's (`cfgs.pkl` and the manifest's arguments, except run names and seed): a difference is printed and recorded, and the card then says NO.
++3. **Verdicts.** With a band on either side, `--ref` gives each headline number a verdict: better or worse only when the two sides' seed ranges do not overlap, else "within noise". One run on each side gets no verdict, and the report says why. `--ref baselines/v1.0` carries v1.0's band, because the frozen `summary.json` holds it.
++4. **The gate in its own environment.** `go2_report.py --gate` starts `go2_sim_suite.py` with `--deploy-python` (default `$DEPLOY_PY`, as in `p2_overnight.sh`), which then runs the whole battery with that python. Before the evaluation starts, the report checks the export, the unitree_mujoco folder, and that this python imports `unitree_sdk2py`.
++5. **One MuJoCo battery at a time.** `go2_sim_suite.py` takes an exclusive, non-blocking lock (`go2_sim_suite.lock` in the temp folder) before its first case. A second battery stops at once with a message. The kernel releases the lock when the process ends, also after a crash, so a lock cannot be left behind.
++6. **`--energy 0` is off.** `$BASE` holds `--energy 1.5e-3`; a later `--energy 0` now adds no term, so `$BASE --energy 0` trains exactly as without the flag (checked bit for bit). That is the comparison run for the energy-against-terrain question (guide 4.3, run 5).
++
++### What changed, per file
++
++**go2_decide.py**
++- `all_worse()`, `chance()`; every cost check of `harness_costs()`, `rule_slip()` (per foot) and `rule_critic()` (learning speed, final reward, terrain level) needs both conditions; failing types and slopes are listed.
++- Seeds line in the printout and the record (`- seeds: ...`); a note below 3 seeds per arm.
++- Evidence rows, not judged: `stride`, `swing_h` on every terrain world (slip); flat `lin_err` over the slow and lateral bins and `yaw_err` turning in place (critic).
++
++**go2_report.py**
++- `--seeds`, `--deploy-python`; `SEED_KEYS`; `find_summary()`, `config_of()`, `run_folder()`, `band_of()`, `side_of()`, `side_text()`, `verdict()`.
++- `REPORT.md`: a "Seed band" table; the "Against" table shows both sides (mean [min–max]), the change of the means and the verdict; a note for one run on each side.
++- `--gate`: export, folder and `unitree_sdk2py` checked first; the gate's exit code printed.
++
++**go2_card.py**
++- Checklist line `seed band` (≥ `BAND_MIN_RUNS` = 3 runs of one configuration); a results line with the band of `BAND_KEYS`.
++
++**go2_sim_suite.py**
++- `one_batch_at_a_time()`, called before the first case (not for `--list`).
++
++**go2_train.py**
++- `--energy 0` adds no term; help texts of `--energy` and `--air-time-max`.
++
++### Checked here (P3 v2)
++
++- Default flags: bit-identical networks and Adam moments with the P2 code (51 of 51 tensors; 3 iterations, CPU, 32 envs). `--symmetry --energy 1.5e-3 --energy 0` against `--symmetry`: 51 of 51 identical.
++- `go2_decide.py slip` on synthetic 3 + 3 seed CSVs: a +17 % `lin_err` mean whose seed ranges overlap passes (the P3.4 rule would have DROPped); a consistent +36 % fails; the seeds line reads "1 in 20" (2 + 2: "1 in 6" and the note). `go2_decide.py critic` on smoke runs: the new detail lines and the evidence rows; `go2_card.py` still reads the new records.
++- `go2_report.py`: a 3-run band (one configuration); `--ref` band against band (consistently worse numbers say "worse", equal ones "within noise"); one run each ("–" and the note); a seed with a changed reward weight (`WARNING`, and the card's `seed band` NO); `--seeds` without a report, `--gate` with a missing folder, a python without `unitree_sdk2py` and a python that does not exist: all refused before any evaluation.
++- `go2_card.py`: `seed band` ok with 3 runs; NO with 2 runs, with another configuration, without a band.
++- `go2_sim_suite.py`: a second holder of the lock is refused with the message while the first holds it; once the first ends, the lock is free again. `--list` unchanged.
++- pyflakes on every changed file.
++
++**Not checked:** the gate suite through `--deploy-python` against your go2deploy environment (no unitree_mujoco here); the energy-against-terrain effect (it needs your terrain runs).
++
+ ## Rewards and terminations per phase
+ 
+ P1.4 to P1.6 keep every P1.3 value; their additions are the last rows.
+@@ -1081,7 +1150,7 @@
+ - **Torque–speed limit.** A DC-motor curve (Isaac Lab `DCMotor`) instead of a flat clip.
+ - **System identification on your Go2.** Identify armature, joint friction and latency. Menagerie also uses damping and frictionloss values that are not adopted here.
+ - **An onnxruntime deploy path.** P3.4 exports and checks `policy.onnx`; `go2_fsm.py` still runs `policy.pt`. A C++ runtime (onnxruntime, TensorRT) would drop the PyTorch dependency on the robot computer.
+-- **Seed statistics in the report.** `go2_report.py --ref` compares two runs; the spread over the v1.0 seeds is collected by hand (`TEST_AND_TINKER_P3.md` 7.9).
++- **The energy term on terrain.** P2 calibrated `--energy 1.5e-3` on flat ground; climbing needs far more power. Whether it slows the terrain curriculum is to be seen in your P3.1 runs (`TEST_AND_TINKER_P3.md` 4.5); a terrain-specific weight is not implemented.
+ - **Reset with forward kinematics as the default** (P3.1 found the kick on flat ground, see "Fixes to earlier phases" in the P3.1 section). The v1.0 command line sets `--set env.reset_forward=True` and the card checks it; the default stays off, so runs with default flags keep training bit for bit as in P2.
+ - **Stairs.** P3.1's tiles are blind-friendly (slopes, rough, waves, low obstacles). Stairs need a perception input, or a student distilled from a teacher with the height scan (P3.3 has the scan entry, not the stair tiles).
+ - **A Genesis ↔ DDS bridge**, to run `go2_deploy_sdk2.py` against Genesis rather than unitree_mujoco.
+@@ -1139,3 +1208,4 @@
+   - PyTorch 2.8 release notes draft, [pytorch-labs/torch-release-notes#17](https://github.com/pytorch-labs/torch-release-notes/pull/17) (`dynamo=True` default from 2.9, TorchScript "nearing end-of-life")
+   - ONNX Runtime [Python API](https://onnxruntime.ai/docs/api/python/api_summary.html) (`InferenceSession`, `get_inputs`, `run`); onnx 1.23.2 (installed package) `external_data_helper.py` (`load_external_data_for_tensor` reads the `.data` file and marks the tensor inline)
+   - GitHub CLI [gh release create](https://cli.github.com/manual/gh_release_create) (assets, `--title`, `--notes-file`, `--verify-tag`)
++- P3 v2: `P2_SUMMARY.md` (your P2 results, 2026-11-06): final configuration, run names, training-noise band, two conda environments, one MuJoCo batch at a time, energy and terrain, the commands still weak.
+diff -ruN a/TEST_AND_TINKER_P3.md b/TEST_AND_TINKER_P3.md
+--- a/TEST_AND_TINKER_P3.md	2026-11-06 11:42:25.435400635 +0900
++++ b/TEST_AND_TINKER_P3.md	2026-11-06 11:42:25.437927371 +0900
+@@ -5,6 +5,11 @@
+ ONNX export, harness report, config card, git tag) are implemented**: they were checked on CPU here and are described
+ in full (sections 4 to 7).
+ 
++**P3 v2 (2026-11-06): the P2 results applied** (`P2_SUMMARY.md`). `$BASE` holds the P2 choices (`--symmetry --energy
++1.5e-3`) and `$P2` names the final P2 policy (`go2-p25-w1.5e-3`, second seed `go2-p25-s2`). The A/B decisions judge
++costs against the training noise P2 measured, with 3 seeds per arm. The report builds seed bands, the gate suite runs
++in the unitree_mujoco environment, and energy is watched on terrain. Markers `[P3v2]`; the list is in section 2.
++
+ Each part section covers:
+ - what the code does and why;
+ - the commands;
+@@ -35,12 +40,12 @@
+ | File | Status vs P2 | Part |
+ |---|---|---|
+ | `go2_terrain.py` | **new** | P3.1: tile grid, tilted plane, ground-height lookup, terrain cache, preview, self-checks (numpy + torch, no Genesis). P3.2: ground normals, `contact_slip_speed()`, the contact-normal check |
+-| `go2_decide.py` | **new** | P3.2 / P3.3: A/B decisions from the harness by fixed rules; writes `decisions/<rule>.md` (no Genesis). P3.4: `flags` prints the flags of the KEEP records |
++| `go2_decide.py` | **new** | P3.2 / P3.3: A/B decisions from the harness by fixed rules; writes `decisions/<rule>.md` (no Genesis). P3.4: `flags` prints the flags of the KEEP records. P3 v2: a cost must be beyond its tolerance and outside the seed range; P2's weak commands shown |
+ | `go2_provenance.py` | **new** | P3.4: git state, code fingerprint, file hashes, versions (standard library only) |
+-| `go2_report.py` | **new** | P3.4: the harness report: the standard evaluation set in one command, `report/REPORT.md` + `summary.json`, `--ref` |
+-| `go2_card.py` | **new** | P3.4: the one-page config card with its freeze checklist; `--freeze` into `baselines/`, the git tag and release commands |
++| `go2_report.py` | **new** | P3.4: the harness report: the standard evaluation set in one command, `report/REPORT.md` + `summary.json`, `--ref`. P3 v2: `--seeds` (seed band, verdicts), `--deploy-python` |
++| `go2_card.py` | **new** | P3.4: the one-page config card with its freeze checklist; `--freeze` into `baselines/`, the git tag and release commands. P3 v2: `seed band` line |
+ | `go2_env.py` | modified | P3.1: ground entity, spawning, terrain and command curricula, ground-relative rewards, tilt limits per env, terrain build fix, resets with forward kinematics on terrain. P3.2: per-foot slip, `foot_slip` reward. P3.3: `privileged` observation group |
+-| `go2_train.py` | modified | P3.1: `--terrain`, `--cmd-curriculum`, `--init-from`, `CMD_CURRICULUM`, `TERRAIN_TILT_MARGIN_DEG`, P3 summary block, `terrain.npz`, curriculum state in checkpoints. P3.2: `--foot-slip`. P3.3: `--privileged`, `--privileged-entries`. P3.4: full `manifest.json` (code fingerprint, argv, untracked files), `git_diff.patch`, repeatable `--set` |
++| `go2_train.py` | modified | P3.1: `--terrain`, `--cmd-curriculum`, `--init-from`, `CMD_CURRICULUM`, `TERRAIN_TILT_MARGIN_DEG`, P3 summary block, `terrain.npz`, curriculum state in checkpoints. P3.2: `--foot-slip`. P3.3: `--privileged`, `--privileged-entries`. P3.4: full `manifest.json` (code fingerprint, argv, untracked files), `git_diff.patch`, repeatable `--set`. P3 v2: `--energy 0` = off |
+ | `go2_metrics.py` | modified | P3.1: `--terrain grid`, `--slope`, Progress table, success heat map, ground-relative heights. P3.2: slip along the ground, `slip_share`, `pen_xy` / `pen_t`, "Foot slip per foot" table. P3.3: `sym_err` over every group |
+ | `go2_compare.py` | modified | P3.1: tile rows (`--rows "hill 9"`), `--preset terrain`. P3.2: `--preset slip` |
+ | `go2_feet_plot.py` | modified | P3.1: clearance above the ground, `--tile TYPE LEVEL`. P3.2: speed along the ground |
+@@ -48,7 +53,8 @@
+ | `go2_symmetry.py` | modified | P3.3: mirror of every privileged entry; `--privileged`, `--slope` checks |
+ | `go2_teleop.py` | modified | P3.1: `--terrain`, `--tile`, `--slope`, J / K / U keys, reached command ranges |
+ | `go2_fsm_sim.py` | modified | P3.1: `--slope`; flat ground otherwise (also with `--dr`) |
+-| `go2_fsm.py`, `go2_deploy_sdk2.py`, `go2_inputs.py`, `go2_commands.py`, `go2_analyze.py`, `go2_sim_suite.py`, `go2_eval.py`, `go2_smooth_ppo.py`, `go2_kinematics.py`, `go2_log.py`, `go2_mujoco_headless.py`, `go2_probe.py`, `test_go2_deploy.py` | unchanged | |
++| `go2_sim_suite.py` | modified | P3 v2: one battery at a time (a lock in the temp folder) |
++| `go2_fsm.py`, `go2_deploy_sdk2.py`, `go2_inputs.py`, `go2_commands.py`, `go2_analyze.py`, `go2_eval.py`, `go2_smooth_ppo.py`, `go2_kinematics.py`, `go2_log.py`, `go2_mujoco_headless.py`, `go2_probe.py`, `test_go2_deploy.py` | unchanged | |
+ 
+ - Put `go2_terrain.py` next to the other scripts. `go2_env.py` imports it, so every script that builds an env needs
+   it, even on flat ground.
+@@ -65,7 +71,8 @@
+ - Old runs (P1, P2) still load and evaluate. Their checkpoints have no curriculum state; the scripts say so and
+   carry on.
+ - Without the P3 flags, a run is exactly your P2 configuration: same weights bit for bit (checked, see `CHANGES.md`).
+-- Markers are `[P3.1]` to `[P3.4]`: `grep -n "\[P3" *.py` lists every change.
++- Markers are `[P3.1]` to `[P3.4]`, and `[P3v2]` for the P2 results applied: `grep -n "\[P3" *.py` lists every
++  change.
+ - `go2_decide.py` writes its decision records to `decisions/` at the top of the repository. Commit them: `logs/` is
+   git-ignored, `decisions/` is not. Likewise `go2_card.py --freeze` writes `baselines/<version>/` (P3.4).
+ 
+@@ -136,6 +143,21 @@
+ | `go2_decide.py` | `flags`: the flags of the KEEP records | The v1.0 command line is built from the decisions, and the card checks it. |
+ | `baselines/v1.0/`, git, `runs.md` | Frozen records (tracked), annotated tag `baseline-v1.0`, a GitHub release with the binaries, the v1.0 row | `logs/` and `*.pt` are git-ignored, so the tag alone does not hold the policy. |
+ 
++### P3 v2: the P2 results applied (implemented; `P2_SUMMARY.md`)
++
++| What P2 found | What changes | Where |
++|---|---|---|
++| Final P2 configuration: `--symmetry --energy 1.5e-3` | `$BASE` holds it, for every P3 run and the v1.0 command line | 3.1 |
++| The final P2 policy is `go2-p25-w1.5e-3` (second seed `go2-p25-s2`); there is no `go2-p2` run | `$P2`, `$P2S2`; P3.1 is compared with both P2 seeds | 3.1, 3.4, 4.4 |
++| Training noise ≫ evaluation noise (lin_err at 0.5 m/s 0.060–0.085 over 3 identical trainings; CoT at 1 m/s 0.595–0.706) | `go2_decide.py`: a cost counts only if it is beyond its tolerance **and** every --on seed is worse than every --off seed; 3 seeds per arm | 5.4, 6.4 |
++| One candidate against one baseline run is not a result | `go2_report.py --seeds`: a seed band, and verdicts that need non-overlapping seed ranges; card line `seed band` (3 seeds) | 7 |
++| Two conda environments (Genesis; unitree_mujoco + unitree_sdk2py) | `go2_report.py --deploy-python` / `$DEPLOY_PY` for the gate, checked before the evaluation | 3.1, 7 |
++| One MuJoCo batch at a time | `go2_sim_suite.py` refuses a second battery (lock) | 7 |
++| Energy may slow the terrain curriculum (expected, not tested) | what to watch; `--energy 0` removes the term from `$BASE` for a comparison run | 4.3, 4.5, 4.9 |
++| Energy and the foot-slip penalty both price foot motion | both slip arms with `$BASE`; `stride` and `swing_h` on the terrain worlds of the record | 5.4 |
++| Slow, lateral and turning commands still undershoot | the critic record shows them (not judged): a privileged critic is one candidate | 6.4 |
++| `--air-time-max` help overstated the uncapped term | help text corrected (no behaviour change) | `go2_train.py` |
++
+ ---
+ 
+ ## 3. Workflow and conventions
+@@ -144,14 +166,23 @@
+ Keep the P2 options you settled on in one variable, so every P3 run differs only by its P3 flags:
+ 
+ ```bash
+-BASE="--seed 1"            # + the P2 options you kept for go2-p2 (e.g. --symmetry --energy 1.5e-3 ...)
++BASE="--seed 1 --symmetry --energy 1.5e-3"   # [P3v2] the P2 choices; + any P1 option you keep (e.g. --height-cmd)
+ CKPT=1999                  # 2000 iterations: the last checkpoint is model_1999.pt
+-P2=go2-p2                  # your final P2 run: the reference for every P3.1 comparison
+-```
++P2=go2-p25-w1.5e-3         # [P3v2] the final P2 policy (seed 1, exported, tested in unitree_mujoco): P3.1's reference
++P2S2=go2-p25-s2            # [P3v2] its second seed: the P2 band
++DEPLOY_PY=$(conda run -n go2deploy which python)   # [P3v2] the unitree_mujoco + unitree_sdk2py python (gate suite)
++```
++- [P3v2] There is no `go2-p2` run: it would be the same configuration as `go2-p25-w1.5e-3`. Use the real name rather
++  than a `logs/go2-p2` symlink, which would get in the way of any later run of that name (training deletes and
++  recreates its folder).
++- [P3v2] Two conda environments, as in P2: everything here runs in the Genesis one (`sandbed`), except what starts
++  unitree_mujoco. `go2_report.py --gate` starts the gate suite with `$DEPLOY_PY` (7.1.3); run `go2_sim_suite.py` by
++  hand with that python too, one battery at a time.
+ 
+ Run names below: `go2-p31c` (command curriculum alone, flat), `go2-p31t` (terrain alone), `go2-p31` (both),
+ `go2-p31i` (both, initialized from P2). P3.2: `go2-p32` (the P3.1 flags: the "without" arm), `go2-p32-slip` (+ the
+-foot-slip penalty). P3.3: `go2-p33` (privileged critic), `go2-p33t` (teacher). Second seeds get `-s2` and `--seed 2`.
++foot-slip penalty). P3.3: `go2-p33` (privileged critic), `go2-p33t` (teacher). Further seeds get `-s2`, `-s3` and
++`--seed 2`, `--seed 3`.
+ 
+ ### 3.2 Where the knobs are
+ 1. **Flags** of `go2_train.py`:
+@@ -180,13 +211,14 @@
+ 5. **Foot slip** (P3.2): `--foot-slip [W]`; `--set reward.foot_slip_mode=tangent` (5.6).
+ 6. **Privileged observations** (P3.3): `--privileged critic|teacher`, `--privileged-entries ENTRY ...` (6.6).
+ 7. **Baseline tools** (P3.4): `go2_export.py --onnx --check-envs --check-steps`, `go2_report.py --reps --worlds --ref`,
+-   `go2_card.py --name --freeze --strict` (7.7). `--set` may be given several times: the lists add up.
++   [P3v2] `--seeds --deploy-python`, `go2_card.py --name --freeze --strict` (7.7). `--set` may be given several
++   times: the lists add up. [P3v2] `--energy 0` removes the energy term that `$BASE` adds.
+ 8. **Constants**: `TERRAIN_DEFAULTS`, `GENERATOR_VERSION`, `FOOTPRINT_HALF`, `BODY_LENGTH` (`go2_terrain.py`);
+    `CMD_CURRICULUM`, `TERRAIN_TILT_MARGIN_DEG`, `FOOT_SLIP_WEIGHT`, `PRIVILEGED_DEFAULT` (`go2_train.py`);
+    `TERRAIN_FAST_BUILD`, `PRIVILEGED_SIZES`, `HEIGHT_SCAN_*` (`go2_env.py`); `THROUGH_FRAC`, `SLIP_SHARE_V`
+    (`go2_metrics.py`); the decision thresholds (`go2_decide.py`); `EXPORT_TOL` (`go2_export.py`); `WORLDS`,
+-   `FRONTIER_THROUGH`, `FLAT_BINS` (`go2_report.py`); `STANDARD_WORLDS`, `REPORT_MIN_REPS`, `RELEASE_FILES`
+-   (`go2_card.py`).
++   `FRONTIER_THROUGH`, `FLAT_BINS` (`go2_report.py`); `STANDARD_WORLDS`, `REPORT_MIN_REPS`, `RELEASE_FILES`,
++   [P3v2] `BAND_MIN_RUNS` (`go2_card.py`).
+ 
+ Every value ends up in `cfgs.pkl`. The start of the training log prints a `--- terrain, curricula, foot slip,
+ privileged observations (P3) ---` block under the P2 block. Read it before leaving a run overnight (examples in 4.2,
+@@ -223,10 +255,21 @@
+ - Slope CSVs keep the command rows, so a flat CSV and slope CSVs of one run compare row by row.
+ - `--preset terrain` shows `through, dist, lin_err, vx_meas, z_err, swing_h, slip_v, nonfoot, tau_peak, CoT`.
+ - [P3.2] `--preset slip` shows the slip of all feet and of each foot, `slip_share`, `slip_d`, `pen_xy`, `pen_t`, and
+-  the costs (`lin_err`, `through`, `stride`, `swing_h`, `CoT`). `go2_decide.py` turns the CSVs of two arms × 2 seeds
++  the costs (`lin_err`, `through`, `stride`, `swing_h`, `CoT`). `go2_decide.py` turns the CSVs of two arms × 3 seeds
+   into a decision (5.4, 6.4).
+-- As before, the first file is the reference and `~` means within 2 standard errors over the evaluation envs. Train
+-  seeds vary more: confirm a difference on 2 seeds before writing it down.
++- As before, the first file is the reference and `~` means within 2 standard errors over the evaluation envs.
++- [P3v2] `~` knows nothing of the **training noise**, which P2 measured far larger. Over 3 identical trainings:
++
++  | at | spread |
++  |---|---|
++  | `vx_meas`, cmd 0.25 | 0.140–0.196 m/s |
++  | `lin_err`, cmd 0.5 / −0.5 | 0.060–0.085 / 0.043–0.082 m/s |
++  | `CoT`, cmd 1.0 | 0.595–0.706 |
++  | `swing_h`, cmd 0.5 | 6.9–8.7 cm |
++
++  So `go2_compare.py` calls nearly every training difference significant. Judge a change against a band of seeds,
++  never against one run: P3.1 against both `$P2` and `$P2S2`, decisions with 3 seeds per arm, candidates with
++  `go2_report.py --seeds` (7.6).
+ - [P3.4] `go2_report.py -e B --ckpt $CKPT --ref A` compares the headline numbers of two runs over the whole standard
+   set, with the direction of each (7.6); `go2_compare.py` stays the tool for row-by-row detail.
+ 
+@@ -493,15 +536,18 @@
+ # 1) The two curricula one at a time (1 seed each)
+ python go2_train.py -e go2-p31c $BASE --cmd-curriculum                  # flat ground, growing commands
+ python go2_train.py -e go2-p31t $BASE --terrain                          # terrain, full command ranges
+-# 2) P3.1: both (2 seeds)
++# 2) P3.1: both (3 seeds: they are also the "without" arm of the P3.2 decision, 5.3)
+ python go2_train.py -e go2-p31 $BASE --terrain --cmd-curriculum
+ python go2_train.py -e go2-p31-s2 $BASE --seed 2 --terrain --cmd-curriculum
++python go2_train.py -e go2-p31-s3 $BASE --seed 3 --terrain --cmd-curriculum
+ # 3) Optional: from your P2 policy (fresh optimizer, iteration 0; P2 checkpoints carry no curriculum state)
+ python go2_train.py -e go2-p31i $BASE --terrain --cmd-curriculum --init-from logs/$P2/model_$CKPT.pt
+ # 4) Continue a run whose levels were still rising at the end (weights and curriculum state)
+ python go2_train.py -e go2-p31-more $BASE --terrain --cmd-curriculum --init-from logs/go2-p31/model_$CKPT.pt
++# 5) [P3v2] Only if hill / pit levels stall (4.5): the same without the energy term, to see whether energy is the cause
++python go2_train.py -e go2-p31-noE $BASE --energy 0 --terrain --cmd-curriculum
+ ```
+-- Use the **same `$BASE` flags as `go2-p2`**: P3.1 then differs from P2 by its P3 flags only.
++- `$BASE` holds the flags of `$P2` (`--symmetry --energy 1.5e-3`): P3.1 then differs from P2 by its P3 flags only.
+ - With `--init-from`, the network shape must match: same observation (e.g. both with or without `--height-cmd`),
+   same `--rnn`.
+ - `--init-from` restarts at iteration 0 with a fresh optimizer. The action noise std is part of the actor's weights,
+@@ -518,7 +564,7 @@
+ 
+ #### 4.4.1 Commands
+ ```bash
+-for R in $P2 go2-p31c go2-p31t go2-p31; do
++for R in $P2 $P2S2 go2-p31c go2-p31t go2-p31 go2-p31-s2 go2-p31-s3; do
+     python go2_metrics.py -e $R --ckpt $CKPT                                     # flat
+     python go2_metrics.py -e $R --ckpt $CKPT --terrain grid                      # own tiles (P2: default grid)
+ done
+@@ -528,7 +574,10 @@
+ python go2_compare.py logs/$P2/metrics_ckpt1999_seed0_grid.csv logs/go2-p31{t,}/metrics_ckpt1999_seed0_grid.csv \
+     --preset terrain --rows "hill 3" "hill 6" "hill 9" "pit 3" "pit 6" "pit 9" "obstacles 6" "obstacles 9"
+ python go2_compare.py logs/$P2/metrics_ckpt1999_seed0.csv logs/go2-p31/metrics_ckpt1999_seed0.csv --preset gait
++python go2_compare.py logs/$P2/metrics_ckpt1999_seed0.csv logs/$P2S2/metrics_ckpt1999_seed0.csv --preset gait  # P2 band
+ ```
++- [P3v2] Read a P3.1 difference on flat ground against the P2 band (`$P2` vs `$P2S2`, last line) and P3.1's own
++  three seeds, not against one P2 run (3.4).
+ 
+ #### 4.4.2 The grid tables (`--terrain grid`)
+ - **Rows.** One row per tile (type, level). Every robot of the row:
+@@ -643,6 +692,13 @@
+   - `Train/mean_reward` falling while the levels rise is normal: the robots are on harder ground.
+ - **When to stop.** Levels still rising at the end of the run = more training is useful: continue with `--init-from`
+   (4.3, run 4).
++- [P3v2] **Energy on the slopes.** `$BASE` holds `--energy 1.5e-3`, and climbing costs much more power than flat
++  walking. Lifting about 15 kg up a 25° face at 0.5 m/s takes 15 × 9.81 × 0.5 × sin 25° ≈ 31 W, more than the final
++  P2 policy's whole flat-walking power at that speed (24–28 W), and Σ|τ·q̇| counts more than the net work. So the term
++  weighs more on hill and pit than its flat calibration suggests; P2.5 saw swing height fall 20–49 % at W = 4e-3 on
++  flat. I expect it may slow `Curriculum/level_hill` and `level_pit` (not tested). Compare
++  `Episode/rew_energy` with `Episode/rew_tracking_lin_vel`; if those levels stall while `level_flat` and `level_rough`
++  climb, train `go2-p31-noE` (4.3, run 5) or a lower W, and compare the levels.
+ 
+ ### 4.6 Visual checks
+ - **`go2_terrain.py`**: `terrain_grid.png` shows the heights on a diverging scale (pits blue, hills red, ground grey)
+@@ -764,10 +820,10 @@
+ |---|---|---|
+ | `Curriculum/terrain_level` drops toward 0 in the first few hundred iterations | robots do not walk yet; falls move them down | normal; it should turn around once they walk. If it never does: `fall_moves_down=False` or `down_ratio=0.3` |
+ | levels barely rise while falls are rare | "up" needs 4 m in one episode; at small command ranges that is rare (4.1.4) | `--set env.terrain.up_distance=3.0`; compare `go2-p31t` |
+-| `level_flat` ≈ 6 but `level_hill` / `level_pit` stuck low | the slopes are the problem | `Curriculum/slope_*_deg` tells the slope; check `tau_peak` uphill in `--slope` tables; consider more hill/pit share or more iterations |
++| `level_flat` ≈ 6 but `level_hill` / `level_pit` stuck low | the slopes are the problem | `Curriculum/slope_*_deg` tells the slope; check `tau_peak` uphill in `--slope` tables; consider more hill/pit share or more iterations. [P3v2] Also the energy term (4.5): train `go2-p31-noE` |
+ | `level_obstacles` stuck at 4–6 | blind steps near the swing height | expected to some extent; `--clearance 0.09` (higher swing) is the first knob; a height scan belongs to P3.3's teacher |
+ | `cmd_*_max` stall at the start ranges | `cmd_score_*` < 0.8 | `--set command.curriculum.threshold=0.7`; check tracking on flat tiles first |
+-| flat tables worse than `$P2` after terrain training | terrain cost flat performance | more flat share, or `--init-from` a P2 policy |
++| flat tables worse than `$P2` after terrain training | terrain cost flat performance, or training noise | [P3v2] first check against the P2 band (`$P2S2`) and the other P3.1 seeds; if it holds: more flat share, or `--init-from` a P2 policy |
+ | every robot falls in the first second of `--terrain grid` | a fall criterion too strict for that policy | read `fall_step`; try `--fall_deg 15` |
+ | `through` n/a | turning command or < 0.1 m/s | expected (4.4.5) |
+ | top levels fail mostly with `--keep_dr` | μ < 0.47 cannot hold 25° (4.1.3) | read the nominal evaluation for the policy, the DR one for robustness |
+@@ -775,9 +831,9 @@
+ | build takes minutes, or RAM runs out | grid too fine or border too wide (4.8); or the build fix is not active | check for the `[go2_env] Genesis X: SupportField.activate differs` message (section 10) |
+ 
+ ### 4.10 Done when
+-- `go2-p31` (2 seeds) reaches a `Curriculum/terrain_level` near its ceiling (6.0), with hill and pit near the top.
++- `go2-p31` (3 seeds) reaches a `Curriculum/terrain_level` near its ceiling (6.0), with hill and pit near the top.
+ - Its heat map shows `through` ≥ 80 % up to level 7–9 on hill and pit, and clearly to the right of `$P2`'s.
+-- Its flat tables are within noise of `$P2` (`go2_compare.py --preset gait`).
++- Its flat tables are within the P2 band (`$P2`, `$P2S2`; `go2_compare.py --preset gait`).
+ - The ±20° slope tables track (`vx_meas` near the command, no falls at the standing bin).
+ - The unseen-tile grid is within a few % of the own tiles.
+ - `go2_export.py` deploys the reached ranges; the P2 sim-to-sim loop still passes in unitree_mujoco on flat ground.
+@@ -786,10 +842,10 @@
+ 
+ | Run | Flags | Seeds | terrain_level (TB) | frontier hill / pit / obst | through hill 9 / pit 9 | flat lin_err 0.5 | flat CoT 0.5 | slope +20 vx_meas 0.5 | slope −20 vx_meas 0.5 | cmd ranges reached |
+ |---|---|---|---|---|---|---|---|---|---|---|
+-| $P2 | (P2) | 1, 2 | – | | | | | | | – |
++| $P2, $P2S2 | (P2) | 1, 2 | – | | | | | | | – |
+ | go2-p31c | --cmd-curriculum | | – | | | | | | | |
+ | go2-p31t | --terrain | | | | | | | | | – |
+-| go2-p31 | both | | | | | | | | | |
++| go2-p31 | both | 1, 2, 3 | | | | | | | | |
+ | go2-p31i | both, --init-from $P2 | | | | | | | | | |
+ 
+ ---
+@@ -905,23 +961,29 @@
+ 
+ ### 5.3 Training runs (the A/B)
+ ```bash
+-# A: without the penalty. Your go2-p31 / go2-p31-s2 if they used these flags (P3.2 code = P3.1 code, bit for bit)
++# A: without the penalty. Your go2-p31, -s2, -s3 if they used these flags (P3.2 code = P3.1 code, bit for bit)
+ python go2_train.py -e go2-p32       $BASE            --terrain --cmd-curriculum
+ python go2_train.py -e go2-p32-s2    $BASE --seed 2   --terrain --cmd-curriculum
++python go2_train.py -e go2-p32-s3    $BASE --seed 3   --terrain --cmd-curriculum
+ # B: + the Spot penalty, W = 0.1
+ python go2_train.py -e go2-p32-slip    $BASE          --terrain --cmd-curriculum --foot-slip
+ python go2_train.py -e go2-p32-slip-s2 $BASE --seed 2 --terrain --cmd-curriculum --foot-slip
++python go2_train.py -e go2-p32-slip-s3 $BASE --seed 3 --terrain --cmd-curriculum --foot-slip
+ # only if B is inconclusive (see 5.6):
+ python go2_train.py -e go2-p32-slipt $BASE --terrain --cmd-curriculum --foot-slip --set reward.foot_slip_mode=tangent
+ python go2_train.py -e go2-p32-slip5 $BASE --terrain --cmd-curriculum --foot-slip 0.5
+ ```
+ Same `--max-iterations` for all of them (the A/B compares the same checkpoint).
++- [P3v2] 3 seeds per arm. P2 measured training noise far above the rule's 5 % tolerances; with 2 + 2 seeds each cost
++  check can still fire by chance 1 time in 6, with 3 + 3 1 time in 20 (5.4.2).
++- [P3v2] Both arms carry `$BASE`, so energy is on in both: the foot-slip penalty and the energy term both price foot
++  motion, and the record shows `stride` and `swing_h` on every world (5.4.3).
+ 
+ ### 5.4 Evaluation and the decision
+ 
+ #### 5.4.1 Commands
+ ```bash
+-for R in go2-p32 go2-p32-s2 go2-p32-slip go2-p32-slip-s2; do
++for R in go2-p32 go2-p32-s2 go2-p32-s3 go2-p32-slip go2-p32-slip-s2 go2-p32-slip-s3; do
+     python go2_metrics.py -e $R --ckpt $CKPT                         # flat
+     python go2_metrics.py -e $R --ckpt $CKPT --terrain grid          # own tiles
+     for S in 15 -15 25 -25; do python go2_metrics.py -e $R --ckpt $CKPT --slope $S; done
+@@ -930,7 +992,8 @@
+     logs/go2-p32-slip/metrics_ckpt${CKPT}_seed0_slope+25.csv --preset slip
+ python go2_compare.py logs/go2-p32/metrics_ckpt${CKPT}_seed0_grid.csv logs/go2-p32-slip/metrics_ckpt${CKPT}_seed0_grid.csv \
+     --preset slip --rows "hill 6" "pit 6" "rough 9"
+-python go2_decide.py slip --off go2-p32 go2-p32-s2 --on go2-p32-slip go2-p32-slip-s2 --ckpt $CKPT
++python go2_decide.py slip --off go2-p32 go2-p32-s2 go2-p32-s3 --on go2-p32-slip go2-p32-slip-s2 go2-p32-slip-s3 \
++    --ckpt $CKPT
+ ```
+ 
+ #### 5.4.2 The rule (agree on it before looking at the numbers)
+@@ -939,33 +1002,48 @@
+ 
+ | Criterion | Pass when | Constant |
+ |---|---|---|
+-| slip drops | on every terrain world (grid, each slope; flat if none), `slip_v` of B is ≥ 30 % below A, and every B seed is below every A seed | `SLIP_DROP` |
+-| no foot worse | no foot's `slip_v` rises by more than 10 % | `FOOT_WORSE` |
+-| tracking | flat `lin_err` of B ≤ A × 1.05 + 0.005 m/s | `LIN_ERR_TOL` |
+-| getting through | `through[%]` not lower by more than 5 points on any grid type or slope | `THROUGH_TOL` |
+-| energy | flat CoT of B ≤ A × 1.05 | `COT_TOL` |
++| slip drops (the benefit) | on every terrain world (grid, each slope; flat if none), `slip_v` of B is ≥ 30 % below A, and every B seed is below every A seed | `SLIP_DROP` |
++| no foot worse (a cost) | no foot's `slip_v` is worse by more than 10 % with every B seed above every A seed | `FOOT_WORSE` |
++| tracking (a cost) | not: flat `lin_err` of B > A × 1.05 + 0.005 m/s with every B seed above every A seed | `LIN_ERR_TOL` |
++| getting through (a cost) | not: `through[%]` lower by more than 5 points with every B seed below every A seed, on any grid type or slope | `THROUGH_TOL` |
++| energy (a cost) | not: flat CoT of B > A × 1.05 with every B seed above every A seed | `COT_TOL` |
+ 
+ All pass → **KEEP** (train v1.0 with the penalty), else **DROP**. If you change a threshold, do it before the runs end
+ and say so with `--note "..."`; the record keeps the note.
+ 
++[P3v2] Why a cost needs both conditions: the tolerances (5 %) are far below the training noise P2 measured (3.4), so a
++mean beyond the tolerance alone is often noise, and with 2 seeds per arm the old rule would often DROP for noise.
++"Every B seed worse than every A seed" is a rank condition: with no real effect it happens by chance 1 / C(n_A + n_B,
++n_B), i.e. 1 in 6 with 2 + 2 seeds and 1 in 20 with 3 + 3. The benefit already asked for the same separation. The
++price: a small real cost that stays inside the seed spread passes; that is what the seeds can resolve, and the record
++shows every seed, so read it.
++
+ #### 5.4.3 Reading the output
+ ```
+-=== P3.2 foot-slip penalty: --off go2-p32 go2-p32-s2 | --on go2-p32-slip go2-p32-slip-s2 | ckpt 1999 ===
++=== P3.2 foot-slip penalty: --off go2-p32 go2-p32-s2 go2-p32-s3 | --on go2-p32-slip ... | ckpt 1999 ===
+ worlds (moving bins): flat, grid, slope+15, slope-15, slope+25, slope-25
++3 + 3 seeds: with no real effect, the arms separate in a given direction by chance 1 in 20 (a cost needs that AND its
++tolerance)
+ world     metric               --off (per seed)  --on (per seed)  change
+ slope+25  slip_v[cm/s]         ...               ...              -41 %
+ slope+25  slip_v_FL[cm/s]      ...
+ ...
+   [pass] slip drops on slope+25: 41 % (needs 30 %), every --on seed below every --off seed: True
+-  [FAIL] getting through: worst through change -8.0 points (grid pit), limit -5
++  [pass] tracking: lin_err on flat 0.0817 vs 0.0700 m/s; beyond 0.0785: True, every --on seed worse: False
++  [FAIL] getting through: worst through change -8.0 points (grid pit, every --on seed lower: True), tolerance -5;
++         failing: grid pit -8.0
+ decision: DROP (a criterion fails)
+   --on runs: foot_slip weight -0.1, mode xy, contact threshold 1.0 N
+ decision record written to decisions/slip.md (commit it; the P3.4 config card includes it)
+ ```
+ (the layout; the numbers are made up)
+ 
+-- The evidence rows also show `slip_share`, `pen_xy`, `pen_t` per world, and the flat gait (`stride`, `swing_h`,
+-  `step_freq`) as side effects that are not judged.
++- The evidence rows also show `slip_share`, `pen_xy`, `pen_t` per world, and the gait as side effects that are not
++  judged: `stride`, `swing_h`, `step_freq` on flat, [P3v2] `stride` and `swing_h` on every terrain world.
++- [P3v2] "beyond ...: True, every --on seed worse: False" (the tracking line above) is a mean beyond the tolerance
++  inside the training noise: it passes. Read such lines in the evidence rows anyway, per seed.
++- [P3v2] With energy on in both arms, compare `swing_h` and `stride` with P2's band (6.9–8.7 cm swing at 0.5 m/s): a
++  clearly lower swing with the penalty is the interaction P2 warned about, even when every criterion passes.
+ - `decisions/slip.md` holds the runs, the rule, every number, the decision and the flags it implies. Commit it:
+   `logs/` is git-ignored, `decisions/` is not. P3.4's `go2_card.py` puts it on the config card.
+ 
+@@ -986,7 +1064,8 @@
+ | contact threshold | `--set reward.contact_force_threshold=...` | 1.0 N | **also** the air-time contact (P1.1) and the P3.3 slip entry: change it for all or for none |
+ | harness slipping threshold | `SLIP_SHARE_V` (`go2_metrics.py`) | 0.02 m/s | what `slip_share` counts |
+ | harness stance threshold | `CONTACT_N` (`go2_metrics.py`) | 3 N | as in P1; changing it changes every slip and gait column |
+-| decision thresholds | `go2_decide.py` header | 30 %, 10 %, 5 %, 5 points, 5 % | fix them before the numbers |
++| decision thresholds | `go2_decide.py` header | 30 %, 10 %, 5 %, 5 points, 5 % | fix them before the numbers; [P3v2] a cost also needs the seed ranges separated |
++| seeds per arm | the runs you pass | 3 | [P3v2] chance separation 1 in 20 (2 + 2: 1 in 6) |
+ 
+ If B is inconclusive:
+ - **Slip did not drop, nothing else moved**: the term is too weak. One run at W = 0.5 (`go2-p32-slip5`) tells whether a
+@@ -1009,7 +1088,7 @@
+ 
+ ### 5.8 Done when
+ - The harness reports per-foot tangential slip; flat values are unchanged (checked here).
+-- The A/B decision is taken by `go2_decide.py slip` on 2 seeds per arm, from the same checkpoint.
++- The A/B decision is taken by `go2_decide.py slip` on 3 seeds per arm, from the same checkpoint.
+ - `decisions/slip.md` is committed: on/off, weight, mode, contact threshold, and the numbers behind it.
+ 
+ ---
+@@ -1118,10 +1197,11 @@
+ 
+ ### 6.3 Training runs
+ ```bash
+-# the critic A/B: same flags as the P3.2 arm you keep (A = go2-p32 or go2-p32-slip, 2 seeds), + --privileged critic
++# the critic A/B: same flags as the P3.2 arm you keep (A = go2-p32 or go2-p32-slip, 3 seeds), + --privileged critic
+ P32="--terrain --cmd-curriculum"            # + --foot-slip if the P3.2 decision was KEEP
+ python go2_train.py -e go2-p33    $BASE          $P32 --privileged critic
+ python go2_train.py -e go2-p33-s2 $BASE --seed 2 $P32 --privileged critic
++python go2_train.py -e go2-p33-s3 $BASE --seed 3 $P32 --privileged critic
+ # optional: the critic with the height scan too (it sees the terrain under and ahead of the robot)
+ python go2_train.py -e go2-p33h $BASE $P32 --privileged critic --privileged-entries base_lin_vel friction added_mass \
+     com_shift motor_strength foot_forces foot_slip height_scan
+@@ -1149,23 +1229,27 @@
+ 
+ #### 6.4.2 Commands and rule
+ ```bash
+-for R in go2-p33 go2-p33-s2; do
++for R in go2-p33 go2-p33-s2 go2-p33-s3; do
+     python go2_metrics.py -e $R --ckpt $CKPT
+     python go2_metrics.py -e $R --ckpt $CKPT --terrain grid
+     for S in 15 -15 25 -25; do python go2_metrics.py -e $R --ckpt $CKPT --slope $S; done
+ done
+-python go2_decide.py critic --off go2-p32 go2-p32-s2 --on go2-p33 go2-p33-s2 --ckpt $CKPT
++python go2_decide.py critic --off go2-p32 go2-p32-s2 go2-p32-s3 --on go2-p33 go2-p33-s2 go2-p33-s3 --ckpt $CKPT
+ ```
+-`go2_decide.py critic` reads the TensorBoard files of the four runs and their harness CSVs:
++`go2_decide.py critic` reads the TensorBoard files of the six runs and their harness CSVs. Each criterion fails only
++when B is beyond the tolerance **and** every B seed is worse than every A seed ([P3v2], 5.4.2):
+ 
+-| Criterion | Pass when | Constant |
++| Criterion | Fails when | Constant |
+ |---|---|---|
+-| learns at least as fast | the iteration at which `Train/mean_reward` first reaches 90 % of A's final value: B's mean over seeds at most 5 % later | `LEARN_REACH`, `LEARN_TOL` |
+-| ends at least as high | B's `Train/mean_reward` over the last 5 % of the iterations ≥ A − 2 % | `FINAL_TOL` |
+-| terrain level (when logged) | B's final `Curriculum/terrain_level` ≥ A − 0.2 | `LEVEL_TOL` |
++| learns at least as fast | the iteration at which `Train/mean_reward` first reaches 90 % of A's final value: B's mean over seeds more than 5 % later, every B seed later than every A seed | `LEARN_REACH`, `LEARN_TOL` |
++| ends at least as high | B's `Train/mean_reward` over the last 5 % of the iterations below A − 2 %, every B seed below every A seed | `FINAL_TOL` |
++| terrain level (when logged) | B's final `Curriculum/terrain_level` below A − 0.2, every B seed below every A seed | `LEVEL_TOL` |
+ | tracking, getting through, energy | as for the slip rule (5.4.2) | |
+ 
+-`Loss/value` is printed, not judged. It writes `decisions/critic.md`.
++No criterion fails → **KEEP**. `Loss/value` is printed, not judged. [P3v2] So are the commands P2 left weak: flat
++`lin_err` over the slow and lateral bins (planar command ≤ 0.3 m/s) and `yaw_err` turning in place. P2 measured 0.16
++for 0.25 m/s, 0.22 for 0.3 m/s lateral and a constant −0.05 m/s shortfall forward; a critic that sees the base velocity
++is one candidate fix, and these rows say whether it is one. It writes `decisions/critic.md`.
+ 
+ #### 6.4.3 A teacher
+ - The harness measures a teacher like any policy (`go2_metrics.py` builds the privileged group).
+@@ -1179,7 +1263,8 @@
+   `Curriculum/terrain_level` (faster climb) rather than in the flat tracking reward.
+ - With only the default entries the critic does not see the terrain. `go2-p33h` (height scan in the critic) is the
+   variant that can predict "a pit ahead".
+-- If the curves are within seed noise, keep v1.0 without it: simpler, and nothing is lost on the robot either way.
++- If the curves are within seed noise, the rule keeps it: it costs nothing on the robot. The rows of P2's weak
++  commands (6.4.2) are where I would look for a gain on flat ground.
+ 
+ ### 6.6 Knobs
+ 
+@@ -1206,8 +1291,8 @@
+ ### 6.8 Done when
+ - `--privileged critic` and `teacher` train; the mirror check passes for every entry (flat and slope); the export of a
+   critic run is unchanged and a teacher's is refused (all checked here).
+-- The critic A/B is decided by `go2_decide.py critic` on 2 seeds, and `decisions/critic.md` is committed. Keep it for
+-  v1.0 only if it helps.
++- The critic A/B is decided by `go2_decide.py critic` on 3 seeds per arm, and `decisions/critic.md` is committed;
++  v1.0 follows it (the config card checks).
+ 
+ ---
+ 
+@@ -1283,7 +1368,7 @@
+ | `grid` | `--terrain grid` | per tile type: the **frontier**, through at the top level, falls; mean through |
+ | `grid_unseen` | `--terrain grid --terrain_set seed=1 --tag unseen` | the same, on new random tiles |
+ | `slope±10`, `±20`, `±25` | `--slope D` | at 0.5 m/s: vx_meas, lin_err, through, falls, CoT, slip_v; standing: falls, creep |
+-| gate (optional) | `go2_sim_suite.py --suite gate` | runs as expected (needs unitree_mujoco and an export) |
++| gate (optional) | `go2_sim_suite.py --suite gate`, with `--deploy-python` | runs as expected (needs unitree_mujoco and an export) |
+ 
+ - **Frontier** = the last level of the run of levels, from the lowest, with `through` ≥ 80 % (`FRONTIER_THROUGH`).
+   A type that fails its lowest level has no frontier ("none" in the card, −1 in the console and in the headline).
+@@ -1294,6 +1379,17 @@
+   same command then measures every later candidate against v1.0.
+ - `--collect` rebuilds the report from existing CSVs; `--skip-existing` evaluates only the missing worlds. The envs
+   per bin are read from the CSVs (the denominator of `falls`), so a collected report states what was measured.
++- [P3v2] **Seed band** (`--seeds EXP-s2 EXP-s3`): the other training seeds of the configuration, whose reports exist.
++  `REPORT.md` gets a table of every headline number per run, with the mean and the range (max − min), and
++  `summary.json` a `"band"`. Their configurations are checked against this run's: `cfgs.pkl` and the manifest's
++  arguments, except names and seed; any difference is printed as a `WARNING` and recorded.
++- [P3v2] **Verdicts.** With a band on either side, `--ref` gives each headline number a verdict: better / worse only
++  when the two sides' seed ranges do not overlap, else "within noise". One run on each side gets no verdict, and
++  the report says why (P2: one candidate against one baseline run is not a result).
++- [P3v2] **The gate suite runs in the unitree_mujoco environment**: `--deploy-python` (default `$DEPLOY_PY`) starts
++  `go2_sim_suite.py`. Before the evaluation starts, the report checks the export, the unitree_mujoco folder and that
++  this python imports `unitree_sdk2py`, so a wrong environment fails at once instead of after the evaluation.
++  `go2_sim_suite.py` refuses a second battery while one runs (P2: two in parallel make the results invalid).
+ - Time: 32 to 49 s per world on 2 CPU cores here, with `--reps 2` and tile subsets. On your GPU with the default
+   `--reps 20` I would expect 10–20 min for the whole set (not measured).
+ 
+@@ -1308,6 +1404,7 @@
+    | code unchanged | every `.py` file still has the fingerprint the run recorded |
+    | export checked | `exported/` is from this checkpoint, passed every check, has `policy.onnx`, and its files still have the recorded sha256 |
+    | report complete | `report/summary.json` is from this checkpoint, has all 10 worlds, every tile type and level the run trained on, and ≥ 20 envs per bin (`REPORT_MIN_REPS`) |
++   | seed band | [P3v2] the report holds a seed band of ≥ 3 training seeds (`BAND_MIN_RUNS`), all of one configuration |
+    | decision slip / critic | the record exists and the run follows it (penalty weight and mode; privileged entries) |
+    | reset_forward | `env.reset_forward` is True |
+ 
+@@ -1317,7 +1414,8 @@
+    reached per type, the command ranges (reached, deployed).
+ 4. **Policy interface and rewards**: observation layout and noise, action, every reward weight and its parameters
+    (the source of each term is in `CHANGES.md`, "Rewards and terminations per phase").
+-5. **Results**: the headline numbers of the report (a slope table included).
++5. **Results**: the headline numbers of the report (a slope table included); [P3v2] with a seed band, the mean
++   [min–max] of the key numbers.
+ 6. **Export**: sha256 and errors of each file, ONNX inputs and outputs.
+ 7. **Decisions**: P3.2, P3.3 (decision, date, runs, flags, criteria), `reset_forward`.
+ 8. **Reproduce**: `git checkout <commit>` and the command line.
+@@ -1352,8 +1450,8 @@
+ - The report runs 10 worlds and prints the headline numbers (a 3-iteration policy does not walk: falls, n/a and
+   "none" frontiers are expected).
+ - On the card, expect: `export checked` ok, `code unchanged` ok, `reset_forward` ok; `report complete` **NO**
+-  (2 envs per bin, tile subsets: by design, a quick report cannot pass for a baseline's); `code committed` NO if your
+-  tree was dirty; decisions NO until `decisions/` holds both records.
++  (2 envs per bin, tile subsets: by design, a quick report cannot pass for a baseline's); `seed band` NO (one run);
++  `code committed` NO if your tree was dirty; decisions NO until `decisions/` holds both records.
+ - `/tmp/smoke-v1-freeze/` holds the copies; the console shows the git and gh commands it would have you run.
+ 
+ ### 7.3 The freeze, step by step
+@@ -1370,9 +1468,10 @@
+ # 3) Export, checked (TorchScript + ONNX), and the deploy-side tests on it
+ python go2_export.py -e go2-v1.0 --ckpt $CKPT --onnx
+ python test_go2_deploy.py --policy logs/go2-v1.0/exported
+-# 4) The harness report (+ the unitree_mujoco gate suite); the other seeds without the gate
+-python go2_report.py -e go2-v1.0 --ckpt $CKPT --gate ~/unitree_mujoco
+-for S in s2 s3; do python go2_report.py -e go2-v1.0-$S --ckpt $CKPT --ref go2-v1.0; done
++# 4) The harness reports: the other seeds first, then v1.0 with its seed band and the gate suite (unitree_mujoco env)
++for S in s2 s3; do python go2_report.py -e go2-v1.0-$S --ckpt $CKPT; done
++python go2_report.py -e go2-v1.0 --ckpt $CKPT --seeds go2-v1.0-s2 go2-v1.0-s3 \
++    --gate ~/unitree_mujoco --deploy-python $DEPLOY_PY
+ # 5) The card, frozen into baselines/v1.0/; then run the git / gh commands it prints (7.5)
+ python go2_card.py -e go2-v1.0 --ckpt $CKPT --name "Baseline v1.0" --freeze baselines/v1.0 --strict
+ ```
+@@ -1381,8 +1480,9 @@
+ - `reset_forward=True` removes the reset kick on flat tiles too (4.1.8). The freeze is the moment to take it, since
+   it ends bit-identity with P2 anyway.
+ - Train from a clean tree: commit first, then do not edit any `.py` until the card is written. The card checks both.
+-- The seed-2 and seed-3 reports against v1.0 give the seed-to-seed spread of every headline number. Write it in the
+-  thesis next to v1.0's numbers (results log in 7.9).
++- [P3v2] The seed band of step 4 is v1.0's training noise: every later candidate is judged against it (7.6). Write
++  the mean and the range in the thesis next to v1.0's numbers (results log in 7.9).
++- The MuJoCo gate runs alone: do not start another `go2_sim_suite.py` battery (or `p2_overnight.sh` stage) meanwhile.
+ - Add the v1.0 row to your `runs.md`: run, tag, training commit, checkpoint, flags, the card's headline numbers.
+ 
+ ### 7.4 Reading the outputs
+@@ -1405,8 +1505,11 @@
+ - Read the flat tables first: they are the P1/P2 tables, so v1.0 can be compared with every earlier run.
+ - Then the frontiers (own vs unseen tiles: within a level means no overfitting to the tile instances), then the
+   slopes (up vs down at the same angle).
+-- With `--ref`, the last table lists every headline number of both runs, the change (falls in percentage points) and
+-  which way is better.
++- [P3v2] The seed band: the range column is the training noise of each number. A number whose range is wide
++  (e.g. the frontier of one tile type moving by 2 levels between seeds) cannot support a claim of a 1-level gain.
++- With `--ref`, the last table lists every headline number of both sides (mean [min–max] with a band), the change of
++  the means (falls in percentage points), the verdict and which way is better. Only "better" / "worse" are results;
++  "within noise" means the seeds cannot tell.
+ 
+ #### 7.4.3 The card
+ - Read the checklist first. Every `NO` names its reason. For a baseline, all lines must be `ok` (`--strict`).
+@@ -1435,10 +1538,12 @@
+ 
+ ### 7.6 Later candidates against v1.0
+ ```bash
+-python go2_report.py -e go2-v2 --ckpt $CKPT --ref go2-v1.0
++for R in go2-v2-s2 go2-v2-s3; do python go2_report.py -e $R --ckpt $CKPT; done
++python go2_report.py -e go2-v2 --ckpt $CKPT --seeds go2-v2-s2 go2-v2-s3 --ref baselines/v1.0
+ ```
+-- The "Against go2-v1.0" table shows the change of every headline number, with its direction.
+-- Train candidates with the same `$V1FLAGS` plus the change under test, and confirm on 2 seeds, as for P3.2 and P3.3.
++- The "Against" table shows every headline number with both bands, the change of the means and the verdict.
++- Train candidates with the same `$V1FLAGS` plus the change under test, on 3 seeds, as for P3.2 and P3.3. A single
++  candidate run against the v1.0 band gets "better" / "worse" only outside the whole band.
+ - `--ref` takes a run name, a run folder, or a frozen baseline folder: `--ref baselines/v1.0` compares with the
+   `summary.json` frozen in git, on any machine. It is read before the evaluation starts, so a typo fails at once.
+ 
+@@ -1455,6 +1560,9 @@
+ | frontier threshold | `FRONTIER_THROUGH` (`go2_report.py`) | 80 % | |
+ | key commands | `FLAT_BINS` (`go2_report.py`) | 6 bins | rows of the flat tables |
+ | baseline report size | `REPORT_MIN_REPS` (`go2_card.py`) | 20 | below it, "report complete" is NO |
++| seed band | `go2_report.py --seeds`; `BAND_MIN_RUNS` (`go2_card.py`) | 3 runs | [P3v2] the card's `seed band` line |
++| band keys on the card | `BAND_KEYS` (`go2_card.py`) | 5 numbers | [P3v2] shown as mean [min–max] |
++| gate python | `go2_report.py --deploy-python`, `$DEPLOY_PY` | this python | [P3v2] the unitree_mujoco + unitree_sdk2py environment |
+ | card title, tag | `go2_card.py --name`, `--tag` | run name | the tag is derived from the name |
+ | release files | `RELEASE_FILES` (`go2_card.py`) | policy files, deploy_cfg, terrain + the checkpoint | |
+ 
+@@ -1471,12 +1579,16 @@
+ | card: **NO** decision slip / critic | the run does not follow `decisions/` | retrain with `$(python go2_decide.py flags)` |
+ | card: Command "unknown (manifest before P3.4)" | a run trained before P3.4 | fine for comparisons; a baseline should be trained with the P3.4 code |
+ | `--gate`: no export | the gate runs the exported policy in unitree_mujoco | `go2_export.py --onnx` first |
++| `--gate: ... cannot import unitree_sdk2py` | the report would start the gate with the Genesis python (P2: two environments) | `--deploy-python` or `DEPLOY_PY=...` (3.1) |
++| `another go2_sim_suite.py battery is running` | a second MuJoCo batch while one runs | wait for it; results of two parallel batches are invalid |
++| `WARNING: EXP is not this run's configuration: [...]` | `--seeds` names a run with other flags | only seeds of one configuration form a band; the card says NO |
++| card: **NO** seed band | no band, fewer than 3 runs, or not one configuration | report the seeds, then rebuild with `--collect --seeds ...` |
+ | gate suite fails to start | unitree_mujoco or DDS setup | run `go2_sim_suite.py --suite gate` by hand, then `go2_report.py --collect --gate-summary out/suite_*/summary.csv` |
+ | `--ref: no summary.json for EXP` | the reference run has no report on this machine | `--ref baselines/v1.0` (the frozen summary), or run `go2_report.py` on it |
+ | a second `--set` seemed ignored (runs before P3.4) | argparse kept only the last `--set` list | fixed: the lists add up now |
+ 
+ ### 7.9 Done when
+-- `go2_card.py --strict` passes: every checklist line `ok`.
++- `go2_card.py --strict` passes: every checklist line `ok` (with the seed band).
+ - The tag `baseline-v1.0` is pushed, and the release on it holds `policy.pt`, `policy.onnx`, `deploy_cfg.json`, the
+   checkpoint and `terrain.npz`, with the card as its notes.
+ - The card, the release and the tag point to each other: training commit in the card, card in the release, release
+@@ -1489,6 +1601,7 @@
+ | go2-v1.0 | 1 | | | | | | | |
+ | go2-v1.0-s2 | 2 | | | | | | | – |
+ | go2-v1.0-s3 | 3 | | | | | | | – |
++| band | mean [min–max] | | | | | | | – |
+ 
+ ---
+ 
+@@ -1537,10 +1650,17 @@
+   `CONTACT_N` (3 N, P1).
+ - `go2_decide.py`: `SLIP_DROP` (0.30), `FOOT_WORSE` (0.10), `LIN_ERR_TOL` (5 %, 0.005 m/s), `THROUGH_TOL` (5 points),
+   `COT_TOL` (5 %), `LEARN_REACH` (0.9), `LEARN_TOL` (5 %), `FINAL_TOL` (2 %), `LEVEL_TOL` (0.2), `MOVING` (0.1).
++  [P3v2] A cost also needs every --on seed worse than every --off seed (`all_worse()`; chance rate `chance()`).
+ - [P3.4] `go2_export.py`: `EXPORT_TOL` (1e-4).
+ - [P3.4] `go2_report.py`: `WORLDS`, `SLOPES` (±10, ±20, ±25°), `FLAT_BINS` (6 commands), `FLAT_METRICS`,
+   `SLOPE_METRICS`, `FRONTIER_THROUGH` (80 %), `HEADLINE_BETTER`.
+-- [P3.4] `go2_card.py`: `STANDARD_WORLDS` (the 10 worlds), `REPORT_MIN_REPS` (20), `RELEASE_FILES`.
++- [P3.4] `go2_card.py`: `STANDARD_WORLDS` (the 10 worlds), `REPORT_MIN_REPS` (20), `RELEASE_FILES`; [P3v2]
++  `BAND_MIN_RUNS` (3), `BAND_KEYS` (the 5 numbers shown with their band).
++- [P3v2] `go2_report.py`: `SEED_KEYS` (what may differ between the seeds of a band: run names, seed).
++
++### `report/summary.json` "band" (P3 v2, with `--seeds`)
++`{runs: [exp, ...], n, same_config: true | false | null (not checked), config_differs: {run: [keys]}, warnings: [...],
++stats: {headline key: {values: [per run], mean, min, max, share}}}`; `share` marks counts "a/b", stored as shares.
+ 
+ ### `manifest.json` (every run; complete from P3.4)
+ | Field | Content |
+@@ -1595,6 +1715,8 @@
+ | mean through | `go2_report.py` | [P3.4] mean `through[%]` over every tile of a grid world | higher |
+ | `max \|export − policy\|` | `go2_export.py`, `export_check.json` | [P3.4] largest action difference between an exported file and the training policy, per input set (`random_100`, `rollout_NxT`) | ~1e-7; the script stops above 1e-4 |
+ | change, better | `REPORT.md` with `--ref` | [P3.4] candidate − reference (falls: percentage points of the share); the direction that counts as better | – |
++| seed band | `REPORT.md`, `summary.json`, card | [P3v2] a headline number over the training seeds of one configuration: per run, mean, range (max − min) | a narrow range |
++| verdict | `REPORT.md` with `--ref` | [P3v2] better / worse when the two sides' seed ranges do not overlap; "within noise" otherwise; "–" for one run on each side | – |
+ | `Curriculum/*` | TensorBoard | the tags of 3.5 | see 4.5 |
+ 
+ Rules of thumb:
+@@ -1642,6 +1764,10 @@
+ | [P3.4] `--ref: no summary.json for EXP` | no report of the reference on this machine | `--ref baselines/v1.0`, or run `go2_report.py` on it |
+ | [P3.4] `--gate: no export in ...` | the gate suite runs the exported policy | `go2_export.py --onnx` first |
+ | [P3.4] a `NO` line on the config card | see the reason on the line | 7.8 |
++| [P3v2] `--gate: ... cannot import unitree_sdk2py` | the gate would run with the Genesis python | `--deploy-python` / `$DEPLOY_PY` (3.1) |
++| [P3v2] `another go2_sim_suite.py battery is running (... is locked)` | two MuJoCo batches at once | one at a time; the lock goes when the first ends |
++| [P3v2] `WARNING: EXP is not this run's configuration: [...]` | `--seeds` lists a run with other flags | only seeds of one configuration form a band |
++| [P3v2] `--seeds: no report for EXP` | that seed has no `report/summary.json` | run `go2_report.py -e EXP --ckpt ...` first |
+ 
+ ---
+ 
+@@ -1705,3 +1831,5 @@
+   [Python API](https://onnxruntime.ai/docs/api/python/api_summary.html): `InferenceSession`, `get_inputs`, `run`.
+ - [P3.4] GitHub CLI manual, [gh release create](https://cli.github.com/manual/gh_release_create): assets, `--title`,
+   `--notes-file`, `--verify-tag` (otherwise a missing tag is created from the default branch's latest state).
++- [P3v2] `P2_SUMMARY.md` (your P2 results, 2026-11-06): the final configuration, the run names, the training-noise
++  band, the two conda environments, one MuJoCo batch at a time, energy against terrain, the commands still weak.
+diff -ruN a/go2_card.py b/go2_card.py
+--- a/go2_card.py	2026-11-06 11:42:25.431565490 +0900
++++ b/go2_card.py	2026-11-06 11:42:25.437235816 +0900
+@@ -17,6 +17,8 @@
+                             ONNX), and its files still have the recorded sha256
+     report complete         report/summary.json is from this checkpoint, has every world of the standard set, every
+                             tile type and level the run trained on, and at least REPORT_MIN_REPS (20) envs per bin
++    seed band               [P3v2] the report holds a seed band (go2_report.py --seeds) of at least BAND_MIN_RUNS (3)
++                            training seeds of one configuration
+     decision slip           decisions/slip.md exists and the run follows it (foot-slip weight and mode)
+     decision critic         decisions/critic.md exists and the run follows it (privileged entries)
+     reset_forward           on (TEST_AND_TINKER_P3.md 4.1.8)
+@@ -40,6 +42,9 @@
+                    "slope+25", "slope-25")  # go2_report.WORLDS
+ RELEASE_FILES = ("exported/policy.pt", "exported/policy.onnx", "exported/deploy_cfg.json", "terrain.npz")
+ REPORT_MIN_REPS = 20  # envs per bin a baseline report needs (go2_report.py --reps, default 20)
++BAND_MIN_RUNS = 3  # [P3v2] training seeds in the report's seed band (go2_report.py --seeds): the baseline's own noise
++BAND_KEYS = ("flat: lin_err @ 0.5 m/s [m/s]", "flat: CoT @ 0.5 m/s", "flat_dr: falls (all bins)",
++             "grid: mean through [%]", "grid_unseen: mean through [%]")  # [P3v2] shown with their band on the card
+ 
+ 
+ def load_json(path):
+@@ -243,6 +248,17 @@
+                     gaps.append(f"{name} lacks levels of {part}")
+         items.append(("report complete", not gaps, f"{reps_text(reps)} envs per bin; "
+                       + ("; ".join(gaps) if gaps else "every world, tile type and level of the standard set")))
++    band = (report or {}).get("band")  # [P3v2] P2: one run against one run is not a result
++    if not band:
++        items.append(("seed band", False, f"none in the report: report {BAND_MIN_RUNS - 1} more training seeds of "
++                                          f"this configuration, then go2_report.py ... --seeds EXP-s2 EXP-s3"))
++    else:
++        same = band.get("same_config")
++        items.append(("seed band", band["n"] >= BAND_MIN_RUNS and same is True,
++                      f"{band['n']} runs ({', '.join(band['runs'])}), "
++                      + ("one configuration" if same else "configuration not checked" if same is None else
++                         f"NOT one configuration: {band['config_differs']}")
++                      + ("" if band["n"] >= BAND_MIN_RUNS else f"; fewer than {BAND_MIN_RUNS}")))
+     for rule in ("slip", "critic"):
+         ok, why = decision_matches(rule, decisions[rule], reward_cfg, obs_cfg, train_cfg)
+         d = decisions[rule]
+@@ -353,6 +369,12 @@
+             L.append("")
+         if "gate: runs as expected" in h:
+             L.append(f"- unitree_mujoco gate suite: {h['gate: runs as expected']} runs as expected")
++        if band:  # [P3v2] mean [min-max] over the training seeds
++            def show(st):
++                f = (lambda v: "n/a" if v is None else f"{100 * v:.0f} %") if st["share"] else fmt
++                return f"{f(st['mean'])} [{f(st['min'])}–{f(st['max'])}]"
++            L.append(f"- Seed band ({band['n']} runs: {', '.join(band['runs'])}), mean [min–max]: "
++                     + "; ".join(f"{k} {show(band['stats'][k])}" for k in BAND_KEYS if k in band["stats"]))
+         L.append(f"- Full report: `report/REPORT.md` ({report['created']}, seed {report['seed']}, "
+                  f"{reps_text(report['reps'])} envs per bin)")
+     else:
+diff -ruN a/go2_decide.py b/go2_decide.py
+--- a/go2_decide.py	2026-11-06 11:42:25.431892968 +0900
++++ b/go2_decide.py	2026-11-06 11:42:25.437331425 +0900
+@@ -13,15 +13,20 @@
+ The rules (constants below). Change them BEFORE looking at the numbers, and say so in --note:
+ slip    keep the penalty if, on every terrain world (the grid and each slope; flat if there is none):
+           - slip_v drops by at least SLIP_DROP (30 %), and every --on seed is below every --off seed;
+-          - no foot's slip_v rises by more than FOOT_WORSE (10 %);
+-        and the costs stay small: lin_err on flat at most +5 % (+0.005 m/s), through[%] not lower by more than 5
+-        points on any grid type or slope, CoT on flat at most +5 %.
+-critic  keep the privileged critic if it learns at least as fast (the iteration at which Train/mean_reward first
+-        reaches 90 % of the --off runs' final value, or the last iteration + 1 if never: mean over seeds, at most 5 %
+-        later) and ends at least as high
+-        (Train/mean_reward over the last 5 % of the iterations >= --off - 2 %; Curriculum/terrain_level >= --off - 0.2
+-        when logged), with the same harness costs as slip. Loss/value is shown, not judged (a critic with more inputs
+-        fits the returns better; that alone is not a better policy).
++          - no foot's slip_v is worse (see "a cost" below; tolerance FOOT_WORSE, +10 %);
++        and no harness cost: lin_err on flat (tolerance +5 % and +0.005 m/s), through[%] on any grid type or slope
++        (5 points), CoT on flat (+5 %).
++critic  keep the privileged critic unless it learns slower (the iteration at which Train/mean_reward first reaches
++        90 % of the --off runs' final value, or the last iteration + 1 if never; tolerance +5 %), ends lower
++        (Train/mean_reward over the last 5 % of the iterations, -2 %; Curriculum/terrain_level when logged, -0.2), or
++        has a harness cost (as slip). Loss/value is shown, not judged (a critic with more inputs fits the returns
++        better; that alone is not a better policy), and so is tracking at the commands P2 left weak (slow, lateral,
++        turning in place), which a privileged critic may improve.
++[P3v2] A cost is real only if it is beyond its tolerance AND every --on seed is worse than every --off seed (the two
++arms' seed ranges do not overlap). P2 measured the training noise: between identical trainings lin_err at 0.5 m/s
++varied 0.060-0.085 m/s and CoT at 1 m/s 0.595-0.706, far more than the 5 % tolerances. With no real effect, the arms
++separate in a given direction by chance 1 / C(n_on + n_off, n_on): 1 in 6 with 2 + 2 seeds, 1 in 20 with 3 + 3.
++Use 3 seeds per arm (TEST_AND_TINKER_P3.md 5.4); the record states the seed counts and this rate.
+ Prints the evidence and writes decisions/<rule>.md: the decision record (runs, rule, numbers, decision, the flags it
+ implies), which the P3.4 config card includes. Commit it: logs/ is git-ignored, decisions/ is not.
+ [P3.4] python go2_decide.py flags prints the flags the KEEP decisions imply (nothing for DROP), for the baseline run:
+@@ -104,6 +109,20 @@
+     return (b - a) / abs(a) if a and not math.isnan(a) and not math.isnan(b) else math.nan
+ 
+ 
++def all_worse(on, off, higher_is_worse=True):
++    """[P3v2] Every --on seed worse than every --off seed: the two arms' seed ranges do not overlap. Without a real
++    effect this happens by chance 1 / C(n_on + n_off, n_on) (chance())."""
++    on, off = [v for v in on if not math.isnan(v)], [v for v in off if not math.isnan(v)]
++    if not on or not off:
++        return False
++    return min(on) > max(off) if higher_is_worse else max(on) < min(off)
++
++
++def chance(n_on, n_off):
++    """[P3v2] Probability that the arms separate in one given direction by chance (all orders equally likely)."""
++    return 1 / math.comb(n_on + n_off, n_on)
++
++
+ def pct(x):
+     return "n/a" if math.isnan(x) else f"{100 * x:+.0f} %"
+ 
+@@ -135,11 +154,15 @@
+         a, b = arm(off, "flat", "lin_err[m/s]"), arm(on, "flat", "lin_err[m/s]")
+         rec.evidence("flat", "lin_err[m/s]", a, b)
+         limit = nanmean(a) * (1 + LIN_ERR_TOL[0]) + LIN_ERR_TOL[1]
+-        rec.check("tracking", nanmean(b) <= limit, f"lin_err on flat {nanmean(b):.4f} <= {limit:.4f} m/s")
++        beyond, sep = nanmean(b) > limit, all_worse(b, a)
++        rec.check("tracking", not (beyond and sep), f"lin_err on flat {nanmean(b):.4f} vs {nanmean(a):.4f} m/s; "
++                  f"beyond {limit:.4f}: {beyond}, every --on seed worse: {sep}")
+         a, b = arm(off, "flat", "CoT[-]"), arm(on, "flat", "CoT[-]")
+         rec.evidence("flat", "CoT[-]", a, b)
+-        rec.check("energy", math.isnan(nanmean(a)) or nanmean(b) <= nanmean(a) * (1 + COT_TOL),
+-                  f"CoT on flat {pct(rel(nanmean(b), nanmean(a)))} (limit +{100 * COT_TOL:.0f} %)")
++        beyond, sep = nanmean(b) > nanmean(a) * (1 + COT_TOL), all_worse(b, a)
++        rec.check("energy", math.isnan(nanmean(a)) or not (beyond and sep),
++                  f"CoT on flat {pct(rel(nanmean(b), nanmean(a)))}; beyond +{100 * COT_TOL:.0f} %: {beyond}, "
++                  f"every --on seed worse: {sep}")
+     worst = []
+     for world in worlds:
+         if world == "flat":
+@@ -150,15 +173,17 @@
+             label = f"{world} {t}" if t else world
+             rec.evidence(label, "through[%]", a, b, f"d {nanmean(b) - nanmean(a):+.1f} points")
+             if not math.isnan(nanmean(a)):
+-                worst.append((nanmean(b) - nanmean(a), label))
++                worst.append((nanmean(b) - nanmean(a), label, all_worse(b, a, higher_is_worse=False)))
+         fa = [falls(r[world]) for r in off]
+         fb = [falls(r[world]) for r in on]
+         rec.rows.append((world, "falls", " / ".join(f"{x}/{y}" for x, y in fa), " / ".join(f"{x}/{y}" for x, y in fb),
+                          "", ""))
+     if worst:
+-        d, label = min(worst)
+-        rec.check("getting through", d >= -THROUGH_TOL, f"worst through change {d:+.1f} points ({label}), limit "
+-                                                        f"-{THROUGH_TOL:g}")
++        failing = [f"{label} {d:+.1f}" for d, label, sep in worst if d < -THROUGH_TOL and sep]
++        d, label, sep = min(worst)
++        rec.check("getting through", not failing,
++                  f"worst through change {d:+.1f} points ({label}, every --on seed lower: {sep}), tolerance "
++                  f"-{THROUGH_TOL:g}" + (f"; failing: {', '.join(failing)}" if failing else ""))
+ 
+ 
+ def rule_slip(off, on, worlds):
+@@ -179,16 +204,21 @@
+         for foot in FEET:
+             fa, fb = arm(off, world, f"slip_v_{foot}[cm/s]"), arm(on, world, f"slip_v_{foot}[cm/s]")
+             rec.evidence(world, f"slip_v_{foot}[cm/s]", fa, fb)
+-            worse.append((rel(nanmean(fb), nanmean(fa)), foot))
+-        valid = [(c, f) for c, f in worse if not math.isnan(c)]
++            worse.append((rel(nanmean(fb), nanmean(fa)), foot, all_worse(fb, fa)))
++        valid = [(c, f, sep) for c, f, sep in worse if not math.isnan(c)]
+         if valid:
+-            change, foot = max(valid)
+-            rec.check(f"no foot worse on {world}", change <= FOOT_WORSE,
+-                      f"largest per-foot change {pct(change)} ({foot}), limit +{100 * FOOT_WORSE:.0f} %")
++            change, foot, sep = max(valid)
++            failing = [f for c, f, s in valid if c > FOOT_WORSE and s]
++            rec.check(f"no foot worse on {world}", not failing,
++                      f"largest per-foot change {pct(change)} ({foot}, every --on seed worse: {sep}), tolerance "
++                      f"+{100 * FOOT_WORSE:.0f} %" + (f"; failing: {', '.join(failing)}" if failing else ""))
+         else:
+             rec.check(f"no foot worse on {world}", False, "no per-foot slip data (CSVs from before P3.2, or falls)")
+         for metric in ("slip_share[%]", "pen_xy[cm/s]", "pen_t[cm/s]"):
+             rec.evidence(world, metric, arm(off, world, metric), arm(on, world, metric))
++        if world != "flat":  # [P3v2] P2.5: energy pulls swing height down; the slip penalty also prices foot motion
++            for metric in ("stride[cm]", "swing_h[cm]"):
++                rec.evidence(world, metric, arm(off, world, metric), arm(on, world, metric), "side effect, not judged")
+     if "flat" in worlds:
+         for metric in ("stride[cm]", "swing_h[cm]", "step_freq[Hz]", "slip_v[cm/s]"):
+             rec.evidence("flat", metric, arm(off, "flat", metric), arm(on, "flat", metric), "side effect, not judged")
+@@ -229,22 +259,36 @@
+ 
+     it_a, it_b = [reach(d) for d in off_dirs], [reach(d) for d in on_dirs]
+     rec.evidence("training", f"iteration reaching {target:.3g}", it_a, it_b)
+-    rec.check("learns at least as fast", not nanmean(it_b) > nanmean(it_a) * (1 + LEARN_TOL),
+-              f"mean iteration {nanmean(it_b):.1f} vs {nanmean(it_a):.1f} (limit +{100 * LEARN_TOL:.0f} %)")
++    beyond, sep = nanmean(it_b) > nanmean(it_a) * (1 + LEARN_TOL), all_worse(it_b, it_a)
++    rec.check("learns at least as fast", not (beyond and sep),
++              f"mean iteration {nanmean(it_b):.1f} vs {nanmean(it_a):.1f}; beyond +{100 * LEARN_TOL:.0f} %: {beyond}, "
++              f"every --on seed later: {sep}")
+     rec.evidence("training", "final Train/mean_reward", final_a, final_b)
+-    rec.check("ends at least as high", nanmean(final_b) >= nanmean(final_a) * (1 - FINAL_TOL),
+-              f"{nanmean(final_b):.3g} vs {nanmean(final_a):.3g} (limit -{100 * FINAL_TOL:.0f} %)")
++    beyond, sep = nanmean(final_b) < nanmean(final_a) * (1 - FINAL_TOL), all_worse(final_b, final_a, False)
++    rec.check("ends at least as high", not (beyond and sep),
++              f"{nanmean(final_b):.3g} vs {nanmean(final_a):.3g}; beyond -{100 * FINAL_TOL:.0f} %: {beyond}, every "
++              f"--on seed lower: {sep}")
+     levels = {d: scalars(d, "Curriculum/terrain_level") for d in off_dirs + on_dirs}
+     if all(levels.values()):
+         la = [tail_mean(levels[d][1]) for d in off_dirs]
+         lb = [tail_mean(levels[d][1]) for d in on_dirs]
+         rec.evidence("training", "final Curriculum/terrain_level", la, lb)
+-        rec.check("terrain level at least as high", nanmean(lb) >= nanmean(la) - LEVEL_TOL,
+-                  f"{nanmean(lb):.2f} vs {nanmean(la):.2f} (limit -{LEVEL_TOL:g})")
++        beyond, sep = nanmean(lb) < nanmean(la) - LEVEL_TOL, all_worse(lb, la, False)
++        rec.check("terrain level at least as high", not (beyond and sep),
++                  f"{nanmean(lb):.2f} vs {nanmean(la):.2f}; beyond -{LEVEL_TOL:g}: {beyond}, every --on seed lower: "
++                  f"{sep}")
+     values = {d: scalars(d, "Loss/value") for d in off_dirs + on_dirs}
+     if all(values.values()):
+         rec.evidence("training", "final Loss/value", [tail_mean(values[d][1]) for d in off_dirs],
+                      [tail_mean(values[d][1]) for d in on_dirs], "shown, not judged")
++    if "flat" in worlds:  # [P3v2] what P2 left weak (P2_SUMMARY.md): a privileged critic is one candidate fix
++        slow = lambda r: math.hypot(number(r["vx"]), number(r["vy"])) <= 0.3 and abs(number(r["wz"])) < MOVING
++        turn = lambda r: math.hypot(number(r["vx"]), number(r["vy"])) < MOVING
++        for label, pred, metric in (("flat slow + lateral", slow, "lin_err[m/s]"),
++                                    ("flat turning in place", turn, "yaw_err[rad/s]")):
++            a = [nanmean([number(x.get(f"{metric}_mean")) for x in r["flat"] if pred(x)]) for r in off]
++            b = [nanmean([number(x.get(f"{metric}_mean")) for x in r["flat"] if pred(x)]) for r in on]
++            rec.evidence(label, metric, a, b, "weak after P2; shown, not judged")
+     harness_costs(rec, off, on, worlds)
+     return rec
+ 
+@@ -325,6 +369,12 @@
+                                                           *rec.rows)]
+     print(f"\n=== {title}: --off {' '.join(args.off)} | --on {' '.join(args.on)} | ckpt {args.ckpt} ===")
+     print(f"worlds (moving bins): {', '.join(worlds)}")
++    noise = (f"{len(args.on)} + {len(args.off)} seeds: with no real effect, the arms separate in a given direction by "
++             f"chance 1 in {round(1 / chance(len(args.on), len(args.off)))} (a cost needs that AND its tolerance)")
++    print(noise)
++    if min(len(args.on), len(args.off)) < 3:
++        print("note: fewer than 3 seeds per arm. P2 measured training noise far above the tolerances; a third seed "
++              "makes each check far less likely to fire by chance (TEST_AND_TINKER_P3.md 5.4)")
+     for row in [("world", "metric", "--off (per seed)", "--on (per seed)", "change", "")] + rec.rows:
+         print("  ".join(str(x).ljust(w) for x, w in zip(row, widths)))
+     print()
+@@ -344,6 +394,7 @@
+         for line in implied:
+             f.write(f"- --on configuration: {line}\n")
+         f.write(f"- worlds (moving bins of the go2_metrics.py CSVs): {', '.join(worlds)}\n")
++        f.write(f"- seeds: {noise}\n")
+         f.write(f"- rule: go2_decide.py {args.rule} (thresholds in its header; SLIP_DROP {SLIP_DROP}, FOOT_WORSE "
+                 f"{FOOT_WORSE}, LIN_ERR_TOL {LIN_ERR_TOL}, THROUGH_TOL {THROUGH_TOL}, COT_TOL {COT_TOL}"
+                 + (f", LEARN_REACH {LEARN_REACH}, LEARN_TOL {LEARN_TOL}, FINAL_TOL {FINAL_TOL}, LEVEL_TOL {LEVEL_TOL}"
+diff -ruN a/go2_report.py b/go2_report.py
+--- a/go2_report.py	2026-11-06 11:42:25.433762523 +0900
++++ b/go2_report.py	2026-11-06 11:42:25.437641933 +0900
+@@ -4,7 +4,8 @@
+ measures every later candidate against the baseline (--ref).
+ 
+     python go2_report.py -e go2-v1.0 --ckpt 1999                          # the standard set (GPU: est. 10-20 min)
+-    python go2_report.py -e go2-v1.0 --ckpt 1999 --gate ~/unitree_mujoco  # + the unitree_mujoco gate suite
++    python go2_report.py -e go2-v1.0 --ckpt 1999 --gate ~/unitree_mujoco --deploy-python $DEPLOY_PY  # + the gate
++    python go2_report.py -e go2-v1.0 --ckpt 1999 --collect --seeds go2-v1.0-s2 go2-v1.0-s3  # [P3v2] the seed band
+     python go2_report.py -e go2-v2 --ckpt 2999 --ref go2-v1.0             # a candidate, side by side with v1.0
+     python go2_report.py -e go2-v1.0 --ckpt 1999 --collect                # rebuild the report from existing CSVs
+ 
+@@ -23,6 +24,14 @@
+ --ref EXP adds a table "against EXP" (its report/summary.json) with the change of every headline number; --ref also
+ takes a frozen baseline folder (baselines/v1.0, from go2_card.py --freeze). No Genesis in this process: go2_metrics.py
+ runs as a subprocess, with its own Genesis.
++[P3v2] From the P2 results (training noise far above evaluation noise; two conda environments):
++    --seeds EXP ...   the other training seeds of this configuration (report them first): REPORT.md gets a seed band
++                      (every headline number per run, mean, range), summary.json "band"; their configurations are
++                      checked against this run's (cfgs.pkl and manifest.json arguments, except names and seed)
++    --ref             with a band on either side, a verdict per number: better / worse only when the two sides' seed
++                      ranges do not overlap, else "within noise"; one run on each side gets no verdict
++    --deploy-python   the gate suite runs with the python of the unitree_mujoco + unitree_sdk2py environment (default:
++                      $DEPLOY_PY), checked before the evaluation starts
+ """
+ 
+ import argparse
+@@ -30,6 +39,7 @@
+ import json
+ import math
+ import os
++import pickle
+ import shutil
+ import subprocess
+ import sys
+@@ -53,6 +63,8 @@
+ # headline numbers compared by --ref: (key, better) with better "lower", "higher" or "" (no direction)
+ HEADLINE_BETTER = {"falls": "lower", "lin_err": "lower", "yaw_err": "lower", "CoT": "lower", "slip_v": "lower",
+                    "frontier": "higher", "through": "higher", "vx_meas": "", "as expected": "higher"}
++# [P3v2] keys that may differ between the seeds of one configuration (go2_report.py --seeds checks the rest)
++SEED_KEYS = ("train.run_name", "args.exp_name", "args.seed", "args.log_dir")
+ 
+ 
+ def number(text):
+@@ -216,6 +228,97 @@
+     return x
+ 
+ 
++def find_summary(name):
++    """[P3.4] A report's summary.json: a run name (logs/<name>), a run folder, a folder holding summary.json (a frozen
++    baseline, e.g. baselines/v1.0) or the file itself; None when there is none."""
++    return next((c for c in (name, os.path.join(name, "summary.json"), os.path.join(name, "report", "summary.json"),
++                             os.path.join("logs", name, "report", "summary.json")) if os.path.isfile(c)), None)
++
++
++def config_of(log_dir):
++    """[P3v2] What a run trained with, flattened to {key: value}: its five configs (cfgs.pkl) and its arguments
++    (manifest.json, P3.4 runs), without the keys that differ between the seeds of one configuration (SEED_KEYS)."""
++    if not log_dir or not os.path.isfile(os.path.join(log_dir, "cfgs.pkl")):
++        return None
++    flat = {}
++
++    def walk(prefix, x):
++        if isinstance(x, dict) and x:
++            for k, v in x.items():
++                walk(f"{prefix}.{k}", v)
++        else:
++            flat[prefix] = x
++
++    with open(os.path.join(log_dir, "cfgs.pkl"), "rb") as f:
++        for name, cfg in zip(("env", "obs", "reward", "command", "train"), pickle.load(f)):
++            walk(name, cfg)
++    if os.path.isfile(os.path.join(log_dir, "manifest.json")):
++        with open(os.path.join(log_dir, "manifest.json")) as f:
++            walk("args", json.load(f).get("args") or {})
++    for k in SEED_KEYS:
++        flat.pop(k, None)
++    return flat
++
++
++def run_folder(name):
++    """The training folder of a --seeds entry (a run name or folder), for its configuration; None if not found."""
++    for d in (name, os.path.join("logs", name)):
++        if os.path.isfile(os.path.join(d, "cfgs.pkl")):
++            return d
++    return None
++
++
++def band_of(summaries):
++    """[P3v2] Seed band: {key: {"values", "mean", "min", "max", "share"}} over the runs, for every headline number they
++    all have (a count "a/b" enters as its share)."""
++    stats = {}
++    for k, v0 in summaries[0]["headline"].items():
++        if not all(k in s["headline"] for s in summaries):
++            continue
++        values = [as_number(s["headline"][k]) for s in summaries]
++        ok = [v for v in values if not math.isnan(v)]
++        stats[k] = {"values": values, "mean": sum(ok) / len(ok) if ok else math.nan,
++                    "min": min(ok) if ok else math.nan, "max": max(ok) if ok else math.nan,
++                    "share": isinstance(v0, str)}
++    return stats
++
++
++def side_of(summary, key):
++    """{"mean", "min", "max", "n", "share"} of one headline number: the seed band when the report has one."""
++    band = (summary.get("band") or {}).get("stats", {})
++    if key in band:
++        b = band[key]
++        return {"mean": as_number(b["mean"]), "min": as_number(b["min"]), "max": as_number(b["max"]),
++                "n": len(b["values"]), "share": b["share"]}
++    v = summary["headline"].get(key)
++    x = as_number(v)
++    return {"mean": x, "min": x, "max": x, "n": 1, "share": isinstance(v, str), "raw": v}
++
++
++def side_text(x):
++    """A value, or a band "mean [min-max]"; shares in %."""
++    if x["n"] == 1 and isinstance(x.get("raw"), str):
++        return x["raw"]  # a count "a/b" of one run, as measured
++    f = (lambda v: "n/a" if math.isnan(v) else f"{100 * v:.0f} %") if x["share"] else fmt
++    return f(x["mean"]) if x["n"] == 1 else f"{f(x['mean'])} [{f(x['min'])}–{f(x['max'])}]"
++
++
++def verdict(key, ref, cur):
++    """[P3v2] better / worse only when the two sides' seed ranges do not overlap (every run of one side beyond every
++    run of the other); "within noise" otherwise. One run on each side: no verdict (training noise unknown)."""
++    if any(math.isnan(v) for v in (ref["min"], ref["max"], cur["min"], cur["max"])):
++        return "n/a"
++    if ref["n"] == 1 and cur["n"] == 1:
++        return "–"
++    side = "above" if cur["min"] > ref["max"] else "below" if cur["max"] < ref["min"] else None
++    if side is None:
++        return "within noise"
++    direction = better(key)
++    if not direction:
++        return side
++    return "better" if (side == "below") == (direction == "lower") else "worse"
++
++
+ # ---------------------------------------------------------------------------------------------------------------------
+ # REPORT.md
+ # ---------------------------------------------------------------------------------------------------------------------
+@@ -260,22 +363,43 @@
+         lines += ["## unitree_mujoco gate suite (`go2_sim_suite.py --suite gate`)", "",
+                   f"Runs as expected: **{g['as expected']}** (`{g['file']}`)."]
+         lines += [f"- not as expected: {x}" for x in g["not_ok"]] + [""]
++    if s.get("band"):  # [P3v2]
++        b = s["band"]
++        rows = [[k, *[side_text({"mean": v, "min": v, "max": v, "n": 1, "share": st["share"]}) for v in st["values"]],
++                 side_text({"mean": st["mean"], "min": st["mean"], "max": st["mean"], "n": 1, "share": st["share"]}),
++                 "n/a" if math.isnan(st["max"] - st["min"]) else
++                 (f"{100 * (st['max'] - st['min']):.0f} % pts" if st["share"] else fmt(st["max"] - st["min"]))]
++                for k, st in b["stats"].items()]
++        lines += [f"## Seed band: {b['n']} runs of one configuration", "",
++                  "Training seeds of the same configuration; their spread is the training noise every comparison is "
++                  "judged against (P2: identical trainings differ far more than evaluation envs).", "",
++                  table(["headline", *b["runs"], "mean", "range (max − min)"], rows), ""]
++        if b.get("same_config") is False:
++            lines += [f"**Not one configuration**: {b['config_differs']}", ""]
++        if b.get("warnings"):
++            lines += [f"- {w}" for w in b["warnings"]] + [""]
+     if ref:
+         rows = []
+-        for k, v in s["headline"].items():
++        for k in s["headline"]:
+             if k not in ref["headline"]:
+                 continue
+-            r = ref["headline"][k]
+-            a, b = as_number(r), as_number(v)
+-            if math.isnan(a) or math.isnan(b):
++            a, c = side_of(ref, k), side_of(s, k)
++            if math.isnan(a["mean"]) or math.isnan(c["mean"]):
+                 delta = "n/a"
+-            elif isinstance(v, str):  # counts "a/b": the change of the share, in percentage points
+-                delta = f"{100 * (b - a):+.0f} % pts"
++            elif c["share"]:  # counts "a/b": the change of the share, in percentage points
++                delta = f"{100 * (c['mean'] - a['mean']):+.0f} % pts"
+             else:
+-                delta = f"{b - a:+.3g}"
+-            rows.append([k, fmt(r), fmt(v), delta, better(k)])
++                delta = f"{c['mean'] - a['mean']:+.3g}"
++            rows.append([k, side_text(a), side_text(c), delta, verdict(k, a, c), better(k)])
++        n_ref, n_cur = len((ref.get("band") or {}).get("runs", [1])), len((s.get("band") or {}).get("runs", [1]))
+         lines += [f"## Against `{ref['exp']}` (checkpoint {ref['ckpt']})", "",
+-                  table(["headline", ref["exp"], s["exp"], "change", "better"], rows), ""]
++                  f"Seed bands: {n_ref} run(s) for `{ref['exp']}`, {n_cur} for `{s['exp']}` (values: mean "
++                  f"[min–max]). A verdict needs the two ranges not to overlap.", "",
++                  table(["headline", ref["exp"], s["exp"], "change of the means", "verdict", "better"], rows), ""]
++        if n_ref == 1 and n_cur == 1:
++            lines += ["One run on each side: the change includes the training noise, which P2 measured far above the "
++                      "evaluation noise (e.g. lin_err at 0.5 m/s 0.060–0.085 m/s over 3 identical trainings). Give "
++                      "both sides a seed band (`--seeds`) before reading a change as real.", ""]
+     if s.get("plots"):
+         lines += ["## Plots", ""] + [f"- `plots/{p}`" for p in s["plots"]] + [""]
+     if s.get("missing"):
+@@ -303,22 +427,47 @@
+     p.add_argument("--gate-summary", default=None, help="use this go2_sim_suite.py summary.csv instead of running it")
+     p.add_argument("--ref", default=None, metavar="EXP",
+                    help="compare with this run's report (logs/EXP/report), or a frozen one (e.g. baselines/v1.0)")
++    p.add_argument("--seeds", nargs="+", default=None, metavar="EXP",
++                   help="[P3v2] other training seeds of this run's configuration (their reports first): the seed band")
++    p.add_argument("--deploy-python", default=os.environ.get("DEPLOY_PY"), metavar="PYTHON",
++                   help="[P3v2] the python of the unitree_mujoco + unitree_sdk2py environment, which runs the gate "
++                        "suite (default: $DEPLOY_PY, else this python)")
+     args = p.parse_args()
+ 
++    # read and check first: a typo or a wrong environment must not wait for the whole evaluation
+     ref = None
+-    if args.ref:  # read first: a typo must not wait for the whole evaluation
+-        # a run name (logs/<ref>), a run folder, a folder holding summary.json (baselines/v1.0) or the file itself
+-        ref_path = next((c for c in (args.ref, os.path.join(args.ref, "summary.json"),
+-                                     os.path.join(args.ref, "report", "summary.json"),
+-                                     os.path.join("logs", args.ref, "report", "summary.json")) if os.path.isfile(c)),
+-                        None)
++    if args.ref:
++        ref_path = find_summary(args.ref)
+         if ref_path is None:
+             raise SystemExit(f"--ref: no summary.json for {args.ref} (run go2_report.py on that run first, or give "
+                              f"the folder of a frozen baseline, e.g. baselines/v1.0)")
+         with open(ref_path) as f:
+             ref = json.load(f)
+-
++    seed_summaries = []
++    for name in args.seeds or []:  # [P3v2]
++        path = find_summary(name)
++        if path is None:
++            raise SystemExit(f"--seeds: no report for {name}: run go2_report.py -e {name} --ckpt ... first")
++        with open(path) as f:
++            seed_summaries.append((name, json.load(f)))
+     log_dir = args.log_dir or os.path.join("logs", args.exp_name)
++    deploy_python = args.deploy_python or sys.executable
++    if args.gate:  # [P3v2] the gate suite runs in the unitree_mujoco environment (P2: two conda environments)
++        if not os.path.isfile(os.path.join(log_dir, "exported", "policy.pt")):
++            raise SystemExit(f"--gate: no export in {os.path.join(log_dir, 'exported')}: "
++                             f"run go2_export.py -e {args.exp_name} --ckpt {args.ckpt} --onnx")
++        if not os.path.isdir(os.path.expanduser(args.gate)):
++            raise SystemExit(f"--gate: no unitree_mujoco checkout at {args.gate}")
++        try:
++            importable = subprocess.call([deploy_python, "-c", "import unitree_sdk2py"], stdout=subprocess.DEVNULL,
++                                         stderr=subprocess.DEVNULL) == 0
++        except OSError:
++            importable = False
++        if not importable:
++            raise SystemExit(f"--gate: {deploy_python} cannot import unitree_sdk2py. The gate suite needs the python "
++                             f"of your unitree_mujoco environment: --deploy-python /path/to/that/python, or "
++                             f"DEPLOY_PY=... (as in p2_overnight.sh)")
++
+     out = os.path.join(log_dir, "report")
+     os.makedirs(os.path.join(out, "logs"), exist_ok=True)
+     os.makedirs(os.path.join(out, "plots"), exist_ok=True)
+@@ -346,14 +495,13 @@
+     gate = None
+     if args.gate:
+         exported = os.path.join(log_dir, "exported")
+-        if not os.path.isfile(os.path.join(exported, "policy.pt")):
+-            raise SystemExit(f"--gate: no export in {exported}: "
+-                             f"run go2_export.py -e {args.exp_name} --ckpt {args.ckpt} --onnx")
+         gate_dir = os.path.join(out, "gate")
+-        cmd = [sys.executable, os.path.join(HERE, "go2_sim_suite.py"), "--policy", exported, "--um", args.gate,
++        cmd = [deploy_python, os.path.join(HERE, "go2_sim_suite.py"), "--policy", exported, "--um", args.gate,
+                "--suite", "gate", "--out", gate_dir]
+-        print(f"[gate] {' '.join(cmd[1:])}", flush=True)
+-        subprocess.call(cmd)
++        print(f"[gate] {' '.join(cmd)}", flush=True)
++        code = subprocess.call(cmd)
++        if code != 0:
++            print(f"[gate] go2_sim_suite.py exited with {code}", flush=True)
+         args.gate_summary = os.path.join(gate_dir, "summary.csv")
+     if args.gate_summary:
+         if not os.path.isfile(args.gate_summary):
+@@ -387,6 +535,29 @@
+                "git_commit": manifest.get("git_hash"), "worlds": worlds, "gate": gate,
+                "headline": headline(worlds, gate), "missing": missing, "plots": plots,
+                "frontier_through": FRONTIER_THROUGH}
++    if seed_summaries:  # [P3v2] the seed band: this run + the other seeds of its configuration
++        mine, warnings, differs = config_of(log_dir), [], {}
++        for name, other in seed_summaries:
++            theirs = config_of(run_folder(name))
++            if mine is None or theirs is None:
++                warnings.append(f"{name}: configuration not checked (no cfgs.pkl found)")
++            else:
++                keys = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
++                if keys:
++                    differs[name] = keys[:8] + ([f"... {len(keys) - 8} more"] if len(keys) > 8 else [])
++            if (other["seed"], other["reps"]) != (summary["seed"], summary["reps"]):
++                warnings.append(f"{name}: evaluated with seed {other['seed']} and {reps_text(other['reps'])} envs per "
++                                f"bin, this run with {summary['seed']} and {reps_text(summary['reps'])}")
++            if other["ckpt"] != summary["ckpt"]:
++                warnings.append(f"{name}: checkpoint {other['ckpt']}, this run {summary['ckpt']}")
++        summary["band"] = {"runs": [args.exp_name] + [n for n, _ in seed_summaries], "n": 1 + len(seed_summaries),
++                           "same_config": not differs if not any("not checked" in w for w in warnings) else None,
++                           "config_differs": differs, "warnings": warnings,
++                           "stats": band_of([summary] + [o for _, o in seed_summaries])}
++        for name, keys in differs.items():
++            print(f"WARNING: {name} is not this run's configuration: {keys}")
++        for w in warnings:
++            print(f"WARNING: {w}")
+     with open(os.path.join(out, "summary.json"), "w") as f:
+         json.dump(json_safe(summary), f, indent=2, allow_nan=False)
+     write_report(os.path.join(out, "REPORT.md"), summary, ref)
+diff -ruN a/go2_sim_suite.py b/go2_sim_suite.py
+--- a/go2_sim_suite.py	2026-11-06 11:42:25.433834068 +0900
++++ b/go2_sim_suite.py	2026-11-06 11:42:25.437660823 +0900
+@@ -29,7 +29,8 @@
+ Writes out/suite_<date>/summary.md and summary.csv; the logs stay in --log-dir (logs/deploy).
+ [P2] The summary also has a gait column: swing time air_t [s] / diagonal sync [%] of each moving profile segment
+ (go2_analyze.gait_pattern), so a stress case that breaks the trot shows even when the run passes.
+-Run it alone on the machine: the simulator and the deploy loop must both keep real time.
++Run it alone on the machine: the simulator and the deploy loop must both keep real time. [P3v2] A second battery
++started meanwhile stops at once (a lock in the temp folder, released when the first one ends).
+ """
+ 
+ import argparse
+@@ -37,6 +38,7 @@
+ import os
+ import subprocess
+ import sys
++import tempfile
+ import time
+ from dataclasses import dataclass, field
+ 
+@@ -225,6 +227,24 @@
+     return res
+ 
+ 
++def one_batch_at_a_time():
++    """[P3v2] An exclusive lock for the whole battery (P2: two MuJoCo batches in parallel saturate the CPU, the
++    simulator and the 2 ms loop fall behind real time, and the results are invalid). The kernel releases the lock when
++    the process ends, also after a crash; returns the open lock file, None where fcntl does not exist."""
++    try:
++        import fcntl
++    except ImportError:
++        return None
++    path = os.path.join(tempfile.gettempdir(), "go2_sim_suite.lock")
++    f = open(path, "w")
++    try:
++        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
++    except BlockingIOError:
++        raise SystemExit(f"another go2_sim_suite.py battery is running ({path} is locked): run one MuJoCo batch at a "
++                         f"time, or results become invalid (the 2 ms loop falls behind real time)")
++    return f
++
++
+ def main():
+     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+     p.add_argument("--policy", default=None, help="exported policy folder (go2_export.py); not needed with --list")
+@@ -256,6 +276,7 @@
+         return
+     if args.policy is None or args.um is None:
+         p.error("--policy and --um are required to run cases")
++    args.lock = one_batch_at_a_time()  # [P3v2] held until this process ends
+     args.policy = os.path.abspath(args.policy)
+     args.um = os.path.abspath(os.path.expanduser(args.um))
+     if args.scene is None:
+diff -ruN a/go2_train.py b/go2_train.py
+--- a/go2_train.py	2026-11-06 11:42:25.434156753 +0900
++++ b/go2_train.py	2026-11-06 11:42:25.437745662 +0900
+@@ -470,7 +470,8 @@
+                         help="[P2.1] feet air-time target [s] (P1 default: 0.3)")
+     parser.add_argument("--air-time-max", type=float, default=None, metavar="C",
+                         help="[P2.1] cap [s] on the air time paid at touchdown: the swing duration the term prefers "
+-                             "(P1: uncapped, so it always prefers fewer, longer steps)")
++                             "(P1: uncapped; its shape then prefers fewer, longer steps, but at weight 1 the term is "
++                             "about 0.5 %% of the reward and the cap never bound in P2.1)")
+     parser.add_argument("--clearance", type=float, default=None, metavar="H",
+                         help="[P2.2] foot clearance target [m] of the foot_clearance reward (P1 default: 0.075)")
+     parser.add_argument("--symmetry", nargs="?", const="aug", default=None, choices=("aug", "loss", "both", "log"),
+@@ -480,7 +481,8 @@
+                         help="[P2.4] gait pattern: spot (GaitReward + air-time variance) or wtw (contact schedule + "
+                              "clock inputs; drops feet_air_time)")
+     parser.add_argument("--energy", type=float, nargs="?", const=ENERGY_WEIGHT, default=None, metavar="W",
+-                        help=f"[P2.5] mechanical power penalty -W * sum|tau qdot| (when given alone: {ENERGY_WEIGHT})")
++                        help=f"[P2.5] mechanical power penalty -W * sum|tau qdot| (when given alone: {ENERGY_WEIGHT}; "
++                             f"[P3v2] 0: off, e.g. after a $BASE that holds --energy)")
+     parser.add_argument("--set", nargs="+", action="extend", default=[], metavar="GROUP.KEY=VALUE",
+                         help="[P2] override any config entry last, e.g. reward.reward_scales.foot_clearance=0.5 "
+                              "env.joint_friction=0.3 (groups: env, obs, reward, command, train). [P3.4] May be given "
+@@ -563,8 +565,9 @@
+         # would make every scheduled step cost reward. Put it back with --set reward.reward_scales.feet_air_time=1.0
+         # (and a target below the clock's swing, --air-time 0.2)
+         reward_cfg["reward_scales"].pop("feet_air_time", None)
+-    # [P2.5] energy: mechanical power penalty (reported as power and CoT by go2_metrics.py)
+-    if args.energy is not None:
++    # [P2.5] energy: mechanical power penalty (reported as power and CoT by go2_metrics.py). [P3v2] --energy 0 adds no
++    # term, so "$BASE --energy 0" (BASE holding the P2 choice --energy 1.5e-3) trains exactly as without the flag
++    if args.energy:
+         reward_cfg["reward_scales"]["energy"] = -abs(args.energy)
+     # [P3.1] terrain grid + terrain curriculum, command curriculum
+     if args.terrain:

@@ -1,0 +1,133 @@
+
+=== A = genesis_go2-p23_fwd_back (genesis) ===
+policy go2-p23 ckpt 1999 | 29.9 s | profile fwd_back | scenario walk | truth: full
+modes: passive 0.0-1.0 s -> stand_up 1.0-4.6 s -> policy 4.6-25.8 s -> sit_down 25.8-28.3 s -> passive 28.3-29.9 s
+     1.000 s  -> stand_up (L1+R2, from passive)
+     4.600 s  -> policy (L1+A)
+     5.100 s  policy running
+     7.700 s  profile fwd_back started (16 s)
+    23.700 s  profile fwd_back ended: done
+    25.800 s  -> sit_down (L1+R1)
+    28.300 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              5.00 / 5.00 / 5.00
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.00 / 0.00 / 0.00
+  control step p50 / p99 / max [ms]             0.08 / 10.73 / 35.23
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          0.0
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.00 / 20.00
+  inference p50 / p99 / max [ms]                0.32 / 15.35 / 35.04
+  targets clipped to the joint range [steps]    35
+
+--- stand: vx +0.00 vy +0.00 wz +0.00 (1.1 s) ---
+metric              A genesis
+vx_meas              0.000207
+vy_meas             -1.98e-05
+wz_meas             -2.28e-06
+lin_err[m/s]         0.000208
+yaw_err[rad/s]       2.28e-06
+vx_odo               0.000207
+lin_err_odo[m/s]     0.000208
+z[m]                    0.328
+z_est[m]                0.327
+pitch[deg]              -1.74
+tilt_max[deg]            1.75
+drift[m]             0.000235
+yaw_drift[deg/s]    -0.000139
+act_rate[rad/s]      0.000651
+act_acc[rad/s2]         0.004
+hf>10Hz[%]              0.137
+tau_rms[Nm]              3.02
+tau>10Hz[Nm]         7.46e-05
+tau_peak[%lim]           11.9
+power[W]               0.0378
+CoT[-]                      -
+duty[-]                     1
+duty_true[-]                1
+step_freq[Hz]               0
+step_freq_true[Hz]          0
+swing_h[cm]                 -
+air_t[s]                    -
+air_t_true[s]               -
+diag_sync[%]                -
+diag_sync_true[%]           -
+air_cv[%]                   -
+air_asym[%]                 -
+loop_p99[ms]                5
+infer_p99[ms]           0.103
+
+--- profile seg 1: vx +0.50 vy +0.00 wz +0.00 (3.5 s) ---
+metric              A genesis
+vx_meas                 0.424
+vy_meas             -0.000558
+wz_meas              -0.00557
+lin_err[m/s]           0.0792
+yaw_err[rad/s]          0.017
+vx_odo                  0.391
+lin_err_odo[m/s]         0.11
+z[m]                    0.311
+z_est[m]                0.311
+pitch[deg]              0.245
+tilt_max[deg]            1.14
+act_rate[rad/s]          2.93
+act_acc[rad/s2]          94.9
+hf>10Hz[%]              0.635
+tau_rms[Nm]              4.84
+tau>10Hz[Nm]            0.567
+tau_peak[%lim]           34.9
+power[W]                 31.9
+CoT[-]                  0.511
+duty[-]                 0.616
+duty_true[-]            0.625
+step_freq[Hz]            1.64
+step_freq_true[Hz]       1.64
+swing_h[cm]              7.37
+air_t[s]                0.234
+air_t_true[s]           0.228
+diag_sync[%]             82.8
+diag_sync_true[%]        82.5
+air_cv[%]                2.17
+air_asym[%]              2.16
+loop_p99[ms]                5
+infer_p99[ms]            10.7
+
+--- profile seg 3: vx -0.50 vy +0.00 wz +0.00 (3.5 s) ---
+metric              A genesis
+vx_meas                -0.435
+vy_meas              -0.00227
+wz_meas              -0.00523
+lin_err[m/s]           0.0654
+yaw_err[rad/s]         0.0158
+vx_odo                 -0.402
+lin_err_odo[m/s]       0.0981
+z[m]                    0.316
+z_est[m]                0.315
+pitch[deg]              -1.09
+tilt_max[deg]            1.73
+act_rate[rad/s]          3.21
+act_acc[rad/s2]           113
+hf>10Hz[%]               0.62
+tau_rms[Nm]              4.46
+tau>10Hz[Nm]            0.657
+tau_peak[%lim]           32.6
+power[W]                 33.2
+CoT[-]                  0.517
+duty[-]                 0.594
+duty_true[-]            0.605
+step_freq[Hz]            1.71
+step_freq_true[Hz]       1.71
+swing_h[cm]              7.55
+air_t[s]                0.235
+air_t_true[s]           0.228
+diag_sync[%]             93.7
+diag_sync_true[%]        93.9
+air_cv[%]                1.06
+air_asym[%]              4.47
+loop_p99[ms]                5
+infer_p99[ms]              17
+
+=== H3 gate (meant for unitree_mujoco runs through the deploy script) ===
+A genesis  PASS
+plot: out/p2_final/go2-p23/plots_bench_fwd_back/overview_A_genesis_go2-p23_fwd_back.png
+csv: out/p2_final/go2-p23/metrics_genesis_go2-p23_fwd_back.csv  (python go2_compare.py <genesis metrics csv> out/p2_final/go2-p23/metrics_genesis_go2-p23_fwd_back.csv)

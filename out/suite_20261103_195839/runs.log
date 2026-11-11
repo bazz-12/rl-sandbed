@@ -1,0 +1,80 @@
+
+##### suite_stand60_mu1_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu1_0.npz --exit-idle 3 --duration 164 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
+
+##### suite_stand60_mu1_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu1_1.npz --exit-idle 3 --duration 164 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
+
+##### suite_slow_mu1_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu1_0.npz --exit-idle 3 --duration 122 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+
+##### suite_slow_mu1_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu1_1.npz --exit-idle 3 --duration 122 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+
+##### suite_fwd_back_mu1_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu1_0.npz --exit-idle 3 --duration 120 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
+
+##### suite_fwd_back_mu1_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu1_1.npz --exit-idle 3 --duration 120 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
+
+##### suite_lateral_mu1_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu1_0.npz --exit-idle 3 --duration 120 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
+
+##### suite_lateral_mu1_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu1_1.npz --exit-idle 3 --duration 120 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
+
+##### suite_yaw_mu1_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu1_0.npz --exit-idle 3 --duration 120 --seed 0 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu1_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+
+##### suite_yaw_mu1_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu1_1.npz --exit-idle 3 --duration 120 --seed 1 --foot-friction 1.0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu1_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+
+##### suite_stand60_mu04_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu04_0.npz --exit-idle 3 --duration 164 --seed 0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
+
+##### suite_stand60_mu04_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_stand60_mu04_1.npz --exit-idle 3 --duration 164 --seed 1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_stand60_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile stand60 --rt --sim --scenario walk --yes
+
+##### suite_slow_mu04_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu04_0.npz --exit-idle 3 --duration 122 --seed 0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+
+##### suite_slow_mu04_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_slow_mu04_1.npz --exit-idle 3 --duration 122 --seed 1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_slow_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile slow --rt --sim --scenario walk --yes
+
+##### suite_fwd_back_mu04_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu04_0.npz --exit-idle 3 --duration 120 --seed 0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
+
+##### suite_fwd_back_mu04_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_fwd_back_mu04_1.npz --exit-idle 3 --duration 120 --seed 1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_fwd_back_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile fwd_back --rt --sim --scenario walk --yes
+
+##### suite_lateral_mu04_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu04_0.npz --exit-idle 3 --duration 120 --seed 0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
+
+##### suite_lateral_mu04_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_lateral_mu04_1.npz --exit-idle 3 --duration 120 --seed 1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_lateral_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile lateral --rt --sim --scenario walk --yes
+
+##### suite_yaw_mu04_0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu04_0.npz --exit-idle 3 --duration 120 --seed 0
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu04_0 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes
+
+##### suite_yaw_mu04_1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_mujoco_headless.py --um /home/rbuche/unitree_mujoco --scene /home/rbuche/unitree_mujoco/unitree_robots/go2/scene_flat.xml --dt 0.002 --truth /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_yaw_mu04_1.npz --exit-idle 3 --duration 120 --seed 1
+$ /home/rbuche/miniforge3/envs/sandbed/bin/python /home/rbuche/projects/sandbed/go2_deploy_sdk2.py --policy /home/rbuche/projects/sandbed/logs/go2-p18h/exported --tag suite_yaw_mu04_1 --log-dir /home/rbuche/projects/sandbed/logs/deploy --profile yaw --rt --sim --scenario walk --yes

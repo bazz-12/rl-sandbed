@@ -1,0 +1,5 @@
+case,suite,run,expect,result,why,tracking,gait_air_t_s/diag_sync_pct,tilt_max_deg,tau_peak_pct,loop_p99_ms,state_age_max_ms,log
+slow_mu1,gate,1,pass,ok,PASS,vx +0.16/+0.25 vx -0.15/-0.25,0.26/84 0.26/90,2,31,5.0,8,/home/rbuche/projects/sandbed/logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093102_suite_slow_mu1_0.npz
+fwd_back_mu1,gate,1,pass,ok,PASS,vx +0.44/+0.50 vx -0.44/-0.50,0.30/89 0.27/90,2,34,5.1,9,/home/rbuche/projects/sandbed/logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093142_suite_fwd_back_mu1_0.npz
+lateral_mu1,gate,1,pass,ok,PASS,vy +0.22/+0.30 vy -0.23/-0.30,0.27/90 0.27/90,2,37,5.2,9,/home/rbuche/projects/sandbed/logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093220_suite_lateral_mu1_0.npz
+yaw_mu1,gate,1,pass,ok,PASS,wz +0.54/+0.60 wz -0.54/-0.60,0.22/84 0.22/85,2,43,5.3,10,/home/rbuche/projects/sandbed/logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093257_suite_yaw_mu1_0.npz

@@ -30,6 +30,8 @@ Gamepad (go2_deploy convention, L1 is the modifier for every mode change)
     trained range, back to 0 (nominal height) at each policy start.
     [S2R] L1+X (policy mode) starts the command profile loaded with load_profile(); it replaces the sticks until it
     ends or a stick is pushed past go2_inputs.STICK_ABORT. L1+B (standing, joint test allowed) starts the joint test.
+    [P2.4] Policies trained with --gait wtw get a gait clock in their observation: Policy runs it (phase 0 at each
+    policy start, + frequency x policy_dt per policy step), exactly as Go2Env does.
 
 [S2R] Safety on every command: position targets clipped to the URDF joint range; damping when a joint is asked for more
 than torque_trip_ratio x its motor limit for torque_trip_s (a wrong joint order or sign, a leg fighting an obstacle, an
@@ -93,6 +95,16 @@ class FsmConfig:
     combos: dict = field(default_factory=lambda: dict(COMBOS))
 
 
+def gait_clock(phase, offsets, duty):
+    """[P2.4] Gait-clock observation, numpy twin of Go2Env.clock_obs() / go2_env.gait_targets(): per-foot phase
+    (global phase + offset), warped so that stance is [0, 0.5) and swing [0.5, 1), then sin of each foot followed by
+    cos of each foot (feet in deploy_cfg["gait_clock"]["feet"] order)."""
+    raw = np.remainder(phase + np.asarray(offsets, dtype=float), 1.0)
+    warped = np.where(raw < duty, raw * (0.5 / duty), 0.5 + (raw - duty) * (0.5 / (1.0 - duty)))
+    angle = 2.0 * np.pi * warped
+    return np.concatenate((np.sin(angle), np.cos(angle)))
+
+
 def projected_gravity(quat_wxyz):
     """Gravity direction in the base frame, R^T (0, 0, -1), for a (w, x, y, z) base orientation.
     Same as Go2Env: transform_by_quat(global_gravity, inv_quat(base_quat)); same as unitree_rl_gym."""
@@ -124,7 +136,8 @@ class Policy:
     """Exported policy (go2_export.py): TorchScript network + deploy_cfg.json.
 
     Builds the observation exactly as Go2Env._update_observation() (go2_fsm_sim.py checks it against the env):
-    base angular velocity, projected gravity, command, joint positions - default, joint velocities, last action.
+    base angular velocity, projected gravity, command, joint positions - default, joint velocities, last action
+    [, P2.4 gait clock].
     policy_dir=None -> zero actions, i.e. hold the default pose with the policy gains (bench tests only).
     [S2R] zero_action=True reads deploy_cfg.json from policy_dir but not the network (first runs on the robot).
     """
@@ -136,7 +149,12 @@ class Policy:
         self.cfg = deploy_cfg
         self.net = None
         n = len(deploy_cfg["joint_names"])
-        self.n_obs = 3 + 3 + int(deploy_cfg.get("num_commands", 3)) + 3 * n  # [S2R]
+        # [P2.4] gait clock (exports of --gait wtw runs): phase in [0, 1), advanced after every policy step
+        self.clock = deploy_cfg.get("gait_clock")
+        self.phase = 0.0
+        self.steps_since_reset = 0  # policy steps since the last reset() (go2_fsm_sim.py checks the clock timing)
+        n_clock = 2 * len(self.clock["offsets"]) if self.clock else 0
+        self.n_obs = 3 + 3 + int(deploy_cfg.get("num_commands", 3)) + 3 * n + n_clock  # [S2R] [P2.4]
         self.warmup_s = 0.0
         if policy_dir is not None and not zero_action:
             import torch
@@ -163,21 +181,24 @@ class Policy:
 
     def reset(self):
         self.last_action[:] = 0.0
+        self.phase = 0.0  # [P2.4] as Go2Env at the start of an episode
+        self.steps_since_reset = 0
         if self.net is not None:  # [P1.6] clear the memory of a recurrent export (empty reset() for an MLP)
             self.net.reset()
 
     def observation(self, gyro, quat_wxyz, q, dq, cmd):
         s = self.obs_scales
-        return np.concatenate(
-            (
-                np.asarray(gyro) * s["ang_vel"],
-                projected_gravity(quat_wxyz),
-                np.asarray(cmd) * self.commands_scale,
-                (np.asarray(q) - self.default_q) * s["dof_pos"],
-                np.asarray(dq) * s["dof_vel"],
-                self.last_action,
-            )
-        ).astype(np.float32)
+        parts = [
+            np.asarray(gyro) * s["ang_vel"],
+            projected_gravity(quat_wxyz),
+            np.asarray(cmd) * self.commands_scale,
+            (np.asarray(q) - self.default_q) * s["dof_pos"],
+            np.asarray(dq) * s["dof_vel"],
+            self.last_action,
+        ]
+        if self.clock:  # [P2.4]
+            parts.append(gait_clock(self.phase, self.clock["offsets"], self.clock["duty"]))
+        return np.concatenate(parts).astype(np.float32)
 
     def step(self, gyro, quat_wxyz, q, dq, cmd):
         """One policy step: returns the joint position targets [rad]."""
@@ -193,7 +214,10 @@ class Policy:
             raise FloatingPointError("policy output is not finite")
         # as Go2Env.step(): the clipped action is applied AND fed back as the last-action observation
         self.last_action = np.clip(action, -self.clip_actions, self.clip_actions)
+        if self.clock:  # [P2.4] Go2Env advances its clock once per policy step, after the physics
+            self.phase = (self.phase + self.clock["frequency"] * self.cfg["policy_dt"]) % 1.0
         self.steps += 1
+        self.steps_since_reset += 1
         return self.default_q + self.action_scale * self.last_action
 
 

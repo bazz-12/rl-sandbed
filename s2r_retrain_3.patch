@@ -1,0 +1,85 @@
+diff --git a/go2_env.py b/go2_env.py
+index 1298ec6..5f3cbba 100644
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -121,6 +121,10 @@ class Go2Env:
+                 # coefficients; costs solver time on every contact.
+                 enable_torsional_friction=self._contact_spin_friction(),
+                 enable_rolling_friction=self.env_cfg.get("foot_rolling_friction") is not None,
++                # [S2R] friction cone and impratio. unitree_mujoco's go2.xml: <option cone="elliptic" impratio="100"/>,
++                # i.e. stiff friction where stance feet do not creep. Genesis' default (pyramidal, impratio 1) lets
++                # them creep. Configs without the keys keep Genesis' defaults.
++                **self._contact_solver_options(),
+             ),
+             vis_options=gs.options.VisOptions(
+                 rendered_envs_idx=[0],
+@@ -355,6 +359,15 @@ class Go2Env:
+     def _add_extra_entities(self):
+         """[P1.6] Called just before scene.build(): a subclass adds cameras or objects here (go2_teleop.py)."""
+ 
++    def _contact_solver_options(self):
++        """[S2R] RigidOptions for env_cfg["friction_cone"] ("pyramidal" / "elliptic") and env_cfg["impratio"]."""
++        options = {}
++        if self.env_cfg.get("friction_cone"):
++            options["friction_cone"] = getattr(gs.friction_cone, self.env_cfg["friction_cone"])
++        if self.env_cfg.get("impratio"):
++            options["impratio"] = float(self.env_cfg["impratio"])
++        return options
++
+     def _contact_spin_friction(self):
+         """[S2R] True when env_cfg asks for torsional friction at the robot's contacts (needed for rolling too)."""
+         return self.env_cfg.get("foot_torsional_friction") is not None or \
+diff --git a/go2_fsm_sim.py b/go2_fsm_sim.py
+index 3c028e8..a0ce455 100644
+--- a/go2_fsm_sim.py
++++ b/go2_fsm_sim.py
+@@ -179,6 +179,12 @@ def main():
+     # [S2R] go2.xml feet: condim="6" friction="0.4 0.02 0.01". Default: the run's own (none before [S2R] runs)
+     p.add_argument("--foot-torsion", type=float, default=None, metavar="M",
+                    help="contact spin resistance [m] (go2.xml: 0.02; 0 = point contact, rolling off too)")
++    p.add_argument("--mjcf-legs", action="store_true",
++                   help="calf mass and CoM of unitree_mujoco's go2.xml (0.241 kg with the foot, CoM 14.1 cm below the "
++                        "knee) instead of go2.urdf's (0.154 + 0.04 kg, 11.5 cm)")
++    p.add_argument("--cone", choices=("pyramidal", "elliptic"), default=None,
++                   help="friction cone (go2.xml: elliptic; Genesis default: pyramidal)")
++    p.add_argument("--impratio", type=float, default=None, help="friction / normal impedance ratio (go2.xml: 100)")
+     p.add_argument("--foot-rolling", type=float, default=None, metavar="M",
+                    help="contact rolling resistance [m] (go2.xml: 0.01; 0 = off), needs torsion")
+     p.add_argument("--friction", type=float, default=None, metavar="MU",
+@@ -208,6 +214,10 @@ def main():
+     for key, value in (("foot_torsional_friction", args.foot_torsion), ("foot_rolling_friction", args.foot_rolling)):
+         if value is not None:  # [S2R] 0 switches the term off (it is a scene option: set before the env is built)
+             env_cfg[key] = value if value > 0 else None
++    if args.cone is not None:  # [S2R]
++        env_cfg["friction_cone"] = args.cone
++    if args.impratio is not None:
++        env_cfg["impratio"] = args.impratio
+     if args.foot_torsion == 0 and args.foot_rolling is None:
+         env_cfg["foot_rolling_friction"] = None  # --foot-torsion 0 alone = point contacts, as in Genesis by default
+     env = Go2Env(args.num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=args.viewer)
+@@ -215,6 +225,16 @@ def main():
+     # [S2R] joint losses (unitree_mujoco's go2.xml: damping 0.1, friction 0.2)
+     # [S2R] runs trained with joint losses already have them (env_cfg); these flags override the run's values
+     env.set_joint_losses(friction=args.joint_friction, damping=args.joint_damping)
++    if args.mjcf_legs:  # [S2R] go2.xml calf (foot included) = URDF calf + URDF foot (0.04 kg at z = -0.213)
++        calves = [env.robot.get_link(f"{leg}_calf").idx_local for leg in ("FL", "FR", "RL", "RR")]
++        m_foot, z_foot, m_mj, x_mj, z_mj = 0.04, -0.213, 0.241352, 0.00629595, -0.141417
++        m_calf = m_mj - m_foot
++        com = env.robot.get_links_COM(calves).clone()  # link frame, [4, 3] (or [N, 4, 3] with batched link info)
++        com[..., 0] = (m_mj * x_mj - m_foot * -0.002) / m_calf
++        com[..., 2] = (m_mj * z_mj - m_foot * z_foot) / m_calf
++        mass = torch.full(com.shape[:-1], m_calf, dtype=com.dtype, device=com.device)
++        env.robot.set_links_mass(mass, calves)
++        env.robot.set_links_COM(com, calves)
+     if args.friction is not None:  # [S2R] as Go2Env's friction randomization: ground and robot get the same ratio
+         n_links = env.robot.n_links
+         env.friction[:] = args.friction
+@@ -287,6 +307,8 @@ def main():
+                   "armature": env_cfg.get("armature"),
+                   "foot_torsional_friction": env_cfg.get("foot_torsional_friction"),  # [S2R]
+                   "foot_rolling_friction": env_cfg.get("foot_rolling_friction"),
++                  "friction_cone": env_cfg.get("friction_cone"), "impratio": env_cfg.get("impratio"),
++                  "mjcf_legs": args.mjcf_legs,
+                   "friction": float(env.friction[0]), "added_mass": float(env.added_mass[0])})
+     # [S2R] feet in the log's leg order (FR, FL, RR, RL, as the joints and the SDK), not Go2Env's FOOT_LINKS order
+     feet = [env.robot.get_link(f"{leg}_foot").idx_local for leg in ("FR", "FL", "RR", "RL")]

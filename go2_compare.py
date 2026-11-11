@@ -4,6 +4,7 @@ go2_compare.py - [P1.6] Compare the go2_metrics.py tables of several runs, side 
     python go2_compare.py logs/go2-p15/metrics_ckpt999_seed0.csv logs/go2-p16/metrics_ckpt999_seed0.csv
     python go2_compare.py A.csv B.csv C.csv --cols lin_err act_acc "tau>10Hz" --rows "0 0 0" "0.5 0 0"
     python go2_compare.py A.csv B.csv --all                  # every metric
+    python go2_compare.py A.csv B.csv --preset gait          # [P2] the gait-quality columns
 
 The first file is the reference (A). For the others, each cell shows the value and its change from A: in % of A,
 or as a difference "d..." when A is ~0 or the metric is compared to a command (measured velocities, height z).
@@ -12,6 +13,18 @@ Rows are matched on the command (vx, vy, wz[, dh]): a run without the body-heigh
 of a run with it. --cols picks metrics by the start of their name (lin_err matches lin_err[m/s]).
 Lower is better for most metrics, not all: vx_meas / vy_meas / wz_meas / z / speed are compared to the command,
 and duty / step_freq / swing_h describe the gait (see TEST_AND_TINKER.md).
+[P2] air_t / stride / swing_h are read against their targets (--air-time, --clearance), diag_sync is higher for a
+trot, air_cv / air_asym / sym_err are lower for a regular, symmetric gait (see TEST_AND_TINKER_P2.md). Compare CSV
+files written by the same go2_metrics.py version (P2 changed how power and CoT are measured).
+[P3.1] go2_metrics.py --terrain grid CSVs have a terrain and a level column: rows are then matched on (terrain, level,
+command), e.g. a flat-trained run and a terrain-trained run on the same tiles; through[%] and dist[m] are higher-is-
+better. --preset terrain shows the terrain columns. --slope CSVs keep the command rows, so a flat CSV and slope CSVs
+of one run compare row by row (A = flat, B = +10 deg, C = +20 deg ...).
+    python go2_compare.py logs/go2-p20/metrics_ckpt1999_seed0_grid.csv logs/go2-p31/metrics_ckpt1999_seed0_grid.csv \\
+        --preset terrain --rows "hill 9" "pit 9"
+[P3.2] --preset slip: the foot-slip columns (slip_v of all feet, then of each foot: slip_v_FL ... slip_v_RR; slip_share,
+slip_d, the penalty sums pen_xy / pen_t) next to the costs (lin_err, through, stride, swing_h, CoT). go2_decide.py
+turns the same CSVs into the A/B decision.
 """
 
 import argparse
@@ -19,7 +32,21 @@ import csv
 import math
 
 CMD_COLS = ("vx", "vy", "wz", "dh")
-DEFAULT_COLS = ("lin_err", "yaw_err", "z_err", "act_acc", "hf>10Hz", "tau>10Hz", "tau_peak", "CoT", "slip_v")
+TILE_COLS = ("terrain", "level")  # [P3.1] go2_metrics.py --terrain grid
+# [P3.2] "slip_v[" = all feet together (slip_v alone would also match the per-foot slip_v_FL ... columns)
+DEFAULT_COLS = ("lin_err", "yaw_err", "z_err", "act_acc", "hf>10Hz", "tau>10Hz", "tau_peak", "CoT", "slip_v[")
+# [P2] --preset gait: one column group per gait-quality part (P2.1 steps, P2.2 clearance, P2.3 symmetry, P2.4 pattern,
+# P2.5 energy), plus tracking so that a gain is never read without its cost
+PRESETS = {
+    "default": DEFAULT_COLS,
+    "gait": ("lin_err", "yaw_err", "air_t", "stride", "step_freq", "duty", "swing_h", "slip_v[", "sym_err",
+             "air_asym", "diag_sync", "air_cv", "sched_match", "power", "CoT"),  # sched_match: go2_analyze.py CSVs
+    # [P3.1] --terrain grid / --slope CSVs: did it get through, at what tracking, height, clearance and energy cost
+    "terrain": ("through", "dist", "lin_err", "vx_meas", "z_err", "swing_h", "slip_v[", "nonfoot", "tau_peak", "CoT"),
+    # [P3.2] the foot-slip decision: slip of all feet and of each foot (slip_v_FL ...), what the penalty sums, and the
+    # costs it could have (tracking, getting through, gait, energy)
+    "slip": ("slip_v", "slip_share[", "slip_d[", "pen_xy", "pen_t", "lin_err", "through", "stride", "swing_h", "CoT"),
+}
 SIGNED = ("vx_meas", "vy_meas", "wz_meas", "z[m]")  # compared to a command or target: differences, not %
 
 
@@ -32,13 +59,38 @@ def load(path):
     names = [c[: -len("_mean")] for c in rows[0] if c.endswith("_mean")]
     table = {}
     for r in rows:
-        table[command_key([r.get(c, 0.0) for c in CMD_COLS])] = r
+        table[row_key(r)] = r
     return table, names
 
 
 def command_key(values):
     values = [float(v) for v in values] + [0.0] * (4 - len(values))  # dh = 0 for 3-command runs
     return tuple(round(v, 3) + 0.0 for v in values[:4])
+
+
+def row_key(r):
+    """[P3.1] (terrain, level, vx, vy, wz, dh): terrain "" and level -1 for the CSVs without tiles (flat, slope)."""
+    level = r.get("level")
+    return (r.get("terrain") or "", int(level) if level not in (None, "") else -1) + \
+        command_key([r.get(c) if r.get(c) not in (None, "") else 0.0 for c in CMD_COLS])
+
+
+def parse_row(text):
+    """--rows entry -> partial key: "VX VY WZ [DH]" (any tile), or "TERRAIN LEVEL [VX VY WZ [DH]]"."""
+    parts = text.replace(",", " ").split()
+    try:
+        float(parts[0])
+        return {"command": command_key(parts)}
+    except ValueError:
+        out = {"terrain": parts[0], "level": int(parts[1])}
+        if len(parts) > 2:
+            out["command"] = command_key(parts[2:])
+        return out
+
+
+def row_matches(key, want):
+    return (want.get("terrain", key[0]) == key[0] and want.get("level", key[1]) == key[1]
+            and want.get("command", key[2:]) == key[2:])
 
 
 def number(text):
@@ -97,6 +149,8 @@ def main():
     p.add_argument("csv", nargs="+", help="metrics_ckpt<N>_seed<S>.csv files; the first one is the reference")
     p.add_argument("--cols", nargs="+", default=None, help="metrics to show, by the start of their name")
     p.add_argument("--all", action="store_true", help="show every metric")
+    p.add_argument("--preset", choices=tuple(PRESETS), default="default",
+                   help="[P2] column set when --cols is not given")
     p.add_argument("--rows", nargs="+", default=None, metavar='"VX VY WZ [DH]"', help="commands to show")
     args = p.parse_args()
 
@@ -113,24 +167,28 @@ def main():
         shown = names
     else:
         shown = []
-        for pattern in args.cols or DEFAULT_COLS:
+        for pattern in args.cols or PRESETS[args.preset]:
             matches = [n for n in names if n.startswith(pattern)]
             if not matches and args.cols:
                 raise SystemExit(f"--cols {pattern}: no such metric. Available: {' '.join(names)}")
             shown += [n for n in matches if n not in shown]
 
-    if args.rows:
-        keys = [command_key(r.replace(",", " ").split()) for r in args.rows]
-    else:  # the reference's rows, then the rows only the other tables have
-        keys = list(tables[0])
-        for t in tables[1:]:
-            keys += [k for k in t if k not in keys]
-    with_dh = any(k[3] != 0.0 for k in keys) or any("dh" in next(iter(t.values())) for t in tables)
-    cmd_names = list(CMD_COLS if with_dh else CMD_COLS[:3])
+    # the reference's rows, then the rows only the other tables have
+    keys = list(tables[0])
+    for t in tables[1:]:
+        keys += [k for k in t if k not in keys]
+    if args.rows:  # [P3.1] "VX VY WZ [DH]" or "TERRAIN LEVEL [VX VY WZ [DH]]", in the order given
+        wants = [parse_row(r) for r in args.rows]
+        keys = [k for w in wants for k in keys if row_matches(k, w)] or [
+            ("", -1) + w["command"] for w in wants if "command" in w]
+    with_dh = any(k[5] != 0.0 for k in keys) or any("dh" in next(iter(t.values())) for t in tables)
+    with_tiles = any(k[0] for k in keys)  # [P3.1]
+    cmd_names = list(TILE_COLS if with_tiles else ()) + list(CMD_COLS if with_dh else CMD_COLS[:3])
 
     def command_cells(key):
         ood = any(t.get(key, {}).get("ood") == "True" for t in tables)
-        return [f"{v:.2f}" for v in key[: len(cmd_names)]] + ["*" if ood else ""]
+        tile = [key[0] or "-", str(key[1]) if key[1] >= 0 else "-"] if with_tiles else []
+        return tile + [f"{v:.2f}" for v in key[2: 2 + len(cmd_names) - len(tile)]] + ["*" if ood else ""]
 
     header = cmd_names + ["ood"] + letters
     lines = [command_cells(k) + [t[k]["falls"] if k in t else "-" for t in tables] for k in keys]

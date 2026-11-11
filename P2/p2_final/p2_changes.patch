@@ -1,0 +1,1566 @@
+diff -ruN a/go2_analyze.py b/go2_analyze.py
+--- a/go2_analyze.py	2026-11-03 22:03:12.621829172 +0900
++++ b/go2_analyze.py	2026-11-03 22:03:12.623669697 +0900
+@@ -21,6 +21,11 @@
+     height      base above the stance feet
+ When a run has ground truth (Genesis bench, unitree_mujoco through rt/sportmodestate or the headless --truth file),
+ "vx_meas", "lin_err", "z" use it (as go2_metrics.py does); on the robot they fall back to the estimates.
++[P2] Gait quality per phase, from the same contact estimate (and from the true contacts when logged, "_true"):
++    air_t, diag_sync, air_cv, air_asym      go2_metrics.py's P2.1 / P2.3 / P2.4 columns (gait_pattern())
++    sched_match                             --gait wtw policies: share of time the feet follow the gait clock read
++                                            from the logged observations (clock_stance())
++    python go2_compare.py genesis.csv mujoco.csv --preset gait   # after --csv: the gait columns, world against world
+ """
+ 
+ import argparse
+@@ -329,6 +334,17 @@
+             if a > 0 and b < len(st) and b - a > 2 and np.isfinite(fh[a:b, k]).any():
+                 heights.append(np.nanmax(fh[a:b, k]))
+     m["swing_h[cm]"] = 100.0 * float(np.mean(heights)) if heights else float("nan")
++    # [P2] gait pattern and symmetry, as go2_metrics.py, from the estimated contacts and from the true ones
++    for suffix, key in (("", "stance"), ("_true", "stance_true")):
++        if key in g:
++            m.update(gait_pattern(g[key][sel], cmd, suffix))
++    clock = run.cfg.get("gait_clock")
++    if clock and np.linalg.norm(cmd[:3]) >= MOVING_CMD:  # [P2.4] does the robot follow its gait clock?
++        want = clock_stance(run, g["t"][sel], clock)
++        if want is not None:
++            for suffix, key in (("", "stance"), ("_true", "stance_true")):
++                if key in g:
++                    m[f"sched_match{suffix}[%]"] = 100.0 * float(np.mean(g[key][sel] == want))
+     # timing during the phase
+     if csel.any():
+         m["loop_p99[ms]"] = 1e3 * float(np.percentile(run.c["loop_dt"][csel], 99))
+@@ -338,6 +354,61 @@
+     return m
+ 
+ 
++MOVING_CMD = 0.1  # [P2] |(vx, vy, wz)| below this = standing command (go2_metrics.py MOVING_CMD, Go2Env.zero_cmd)
++DIAGONALS = ((0, 3), (1, 2))  # [P2] trot pairs in leg order FR, FL, RR, RL: FR-RL, FL-RR (go2_env.TROT_PAIRS)
++MIRRORS = ((0, 1), (2, 3))  # [P2] left-right pairs: FR-FL, RR-RL
++
++
++def gait_pattern(st, cmd, suffix=""):
++    """[P2] go2_metrics.py's gait-quality columns from stance flags st [T, 4] (leg order FR, FL, RR, RL) at GRID_HZ:
++    air_t (mean complete swing [s], P2.1), diag_sync (while a foot is in the air, share of time each diagonal pair
++    agrees, P2.4), air_cv (cycle-to-cycle spread of each foot's swings, P2.4), air_asym (left/right swing difference,
++    P2.3). The estimated contacts (joint torques, hysteresis, 40 ms debounce) differ from go2_metrics.py's 3 N force
++    threshold, so compare these columns between worlds (same estimator), not with go2_metrics.py's absolute values."""
++    out = {}
++    swings = [[] for _ in range(4)]
++    for k in range(4):
++        a_, b_ = runs_of(~st[:, k])
++        swings[k] = [(b - a) / GRID_HZ for a, b in zip(a_, b_) if a > 0 and b < len(st)]
++    flat = [d for s in swings for d in s]
++    out[f"air_t{suffix}[s]"] = float(np.mean(flat)) if flat else float("nan")
++    stepping = ~st.all(1)
++    moving = np.linalg.norm(cmd[:3]) >= MOVING_CMD
++    if moving and stepping.mean() >= 0.05:
++        agree = np.mean([st[:, i] == st[:, j] for i, j in DIAGONALS], axis=0)
++        out[f"diag_sync{suffix}[%]"] = 100.0 * float(agree[stepping].mean())
++    else:
++        out[f"diag_sync{suffix}[%]"] = float("nan")
++    cvs = [100.0 * np.std(s) / np.mean(s) for s in swings if len(s) >= 3]
++    out[f"air_cv{suffix}[%]"] = float(np.mean(cvs)) if cvs else float("nan")
++    if all(swings):
++        m = [np.mean(s) for s in swings]
++        out[f"air_asym{suffix}[%]"] = 100.0 * float(np.mean([abs(m[i] - m[j]) / (0.5 * (m[i] + m[j]))
++                                                             for i, j in MIRRORS]))
++    else:
++        out[f"air_asym{suffix}[%]"] = float("nan")
++    return out
++
++
++def clock_stance(run, tg, clock):
++    """[P2.4] Stance the gait clock asks for at the grid times tg [T, 4] (leg order FR, FL, RR, RL), from the clock
++    entries of the logged observations (the last 2 x 4: sin then cos of each foot's warped phase, feet in clock["feet"]
++    order). Between two policy steps the phase advances at clock["frequency"]. Training asks every foot to stand at a
++    zero command, so this is only meaningful while moving. None if the log has no observation."""
++    p = run.p
++    if not len(p.get("t", [])):
++        return None
++    nf = len(clock["feet"])
++    obs = p["obs"].astype(float)
++    w = np.mod(np.arctan2(obs[:, -2 * nf:-nf], obs[:, -nf:]) / (2 * np.pi), 1.0)  # warped phase [P, F]
++    duty = float(clock["duty"])
++    raw = np.where(w < 0.5, w * duty / 0.5, duty + (w - 0.5) * (1.0 - duty) / 0.5)  # un-warped phase
++    k = np.clip(np.searchsorted(p["t"], tg, side="right") - 1, 0, len(p["t"]) - 1)  # latest policy step
++    phase = np.mod(raw[k] + float(clock["frequency"]) * (tg - p["t"][k])[:, None], 1.0)
++    order = [clock["feet"].index(leg) for leg in K.LEGS]
++    return (phase < duty)[:, order]
++
++
+ def quat_yaw(quat):
+     """Yaw [rad] (ZYX) from (w, x, y, z) rows."""
+     w, x, y, z = quat.T
+@@ -815,7 +886,10 @@
+                     "z[m]", "z_est[m]", "pitch[deg]", "tilt_max[deg]", "drift[m]", "yaw_drift[deg/s]",
+                     "act_rate[rad/s]", "act_acc[rad/s2]", f"hf>{HF_HZ:.0f}Hz[%]", "tau_rms[Nm]",
+                     f"tau>{HF_HZ:.0f}Hz[Nm]", "tau_peak[%lim]", "power[W]", "CoT[-]", "duty[-]", "duty_true[-]",
+-                    "step_freq[Hz]", "step_freq_true[Hz]", "swing_h[cm]", "loop_p99[ms]", "infer_p99[ms]"]
++                    "step_freq[Hz]", "step_freq_true[Hz]", "swing_h[cm]",
++                    "air_t[s]", "air_t_true[s]", "diag_sync[%]", "diag_sync_true[%]", "air_cv[%]", "air_asym[%]",
++                    "sched_match[%]", "sched_match_true[%]",  # [P2]
++                    "loop_p99[ms]", "infer_p99[ms]"]
+     order = []
+     for run in runs:
+         for w in all_windows[run.letter]:
+diff -ruN a/go2_compare.py b/go2_compare.py
+--- a/go2_compare.py	2026-11-03 22:03:12.607488647 +0900
++++ b/go2_compare.py	2026-11-03 22:03:12.609051257 +0900
+@@ -4,6 +4,7 @@
+     python go2_compare.py logs/go2-p15/metrics_ckpt999_seed0.csv logs/go2-p16/metrics_ckpt999_seed0.csv
+     python go2_compare.py A.csv B.csv C.csv --cols lin_err act_acc "tau>10Hz" --rows "0 0 0" "0.5 0 0"
+     python go2_compare.py A.csv B.csv --all                  # every metric
++    python go2_compare.py A.csv B.csv --preset gait          # [P2] the gait-quality columns
+ 
+ The first file is the reference (A). For the others, each cell shows the value and its change from A: in % of A,
+ or as a difference "d..." when A is ~0 or the metric is compared to a command (measured velocities, height z).
+@@ -12,6 +13,9 @@
+ of a run with it. --cols picks metrics by the start of their name (lin_err matches lin_err[m/s]).
+ Lower is better for most metrics, not all: vx_meas / vy_meas / wz_meas / z / speed are compared to the command,
+ and duty / step_freq / swing_h describe the gait (see TEST_AND_TINKER.md).
++[P2] air_t / stride / swing_h are read against their targets (--air-time, --clearance), diag_sync is higher for a
++trot, air_cv / air_asym / sym_err are lower for a regular, symmetric gait (see TEST_AND_TINKER_P2.md). Compare CSV
++files written by the same go2_metrics.py version (P2 changed how power and CoT are measured).
+ """
+ 
+ import argparse
+@@ -20,6 +24,13 @@
+ 
+ CMD_COLS = ("vx", "vy", "wz", "dh")
+ DEFAULT_COLS = ("lin_err", "yaw_err", "z_err", "act_acc", "hf>10Hz", "tau>10Hz", "tau_peak", "CoT", "slip_v")
++# [P2] --preset gait: one column group per gait-quality part (P2.1 steps, P2.2 clearance, P2.3 symmetry, P2.4 pattern,
++# P2.5 energy), plus tracking so that a gain is never read without its cost
++PRESETS = {
++    "default": DEFAULT_COLS,
++    "gait": ("lin_err", "yaw_err", "air_t", "stride", "step_freq", "duty", "swing_h", "slip_v", "sym_err",
++             "air_asym", "diag_sync", "air_cv", "sched_match", "power", "CoT"),  # sched_match: go2_analyze.py CSVs
++}
+ SIGNED = ("vx_meas", "vy_meas", "wz_meas", "z[m]")  # compared to a command or target: differences, not %
+ 
+ 
+@@ -97,6 +108,8 @@
+     p.add_argument("csv", nargs="+", help="metrics_ckpt<N>_seed<S>.csv files; the first one is the reference")
+     p.add_argument("--cols", nargs="+", default=None, help="metrics to show, by the start of their name")
+     p.add_argument("--all", action="store_true", help="show every metric")
++    p.add_argument("--preset", choices=tuple(PRESETS), default="default",
++                   help="[P2] column set when --cols is not given")
+     p.add_argument("--rows", nargs="+", default=None, metavar='"VX VY WZ [DH]"', help="commands to show")
+     args = p.parse_args()
+ 
+@@ -113,7 +126,7 @@
+         shown = names
+     else:
+         shown = []
+-        for pattern in args.cols or DEFAULT_COLS:
++        for pattern in args.cols or PRESETS[args.preset]:
+             matches = [n for n in names if n.startswith(pattern)]
+             if not matches and args.cols:
+                 raise SystemExit(f"--cols {pattern}: no such metric. Available: {' '.join(names)}")
+diff -ruN a/go2_deploy_sdk2.py b/go2_deploy_sdk2.py
+--- a/go2_deploy_sdk2.py	2026-11-03 22:03:12.625392324 +0900
++++ b/go2_deploy_sdk2.py	2026-11-03 22:03:12.627003506 +0900
+@@ -425,6 +425,10 @@
+           f"{json.dumps(c['obs_scales'])} | commands scale {c['commands_scale']}")
+     print(f"  command ranges {json.dumps(c['command_ranges'])} | deadzones lin {c['lin_deadzone']} ang "
+           f"{c['ang_deadzone']}")
++    if c.get("gait_clock"):  # [P2.4] the policy's observation ends with this clock (go2_fsm.Policy runs it)
++        g = c["gait_clock"]
++        print(f"  gait clock {g['frequency']} Hz, duty {g['duty']}, offsets "
++              + ", ".join(f"{f} {o:g}" for f, o in zip(g["feet"], g["offsets"])) + " (phase 0 at each policy start)")
+     print("  joint -> SDK motor | default [rad]: " + ", ".join(
+         f"{n.replace('_joint', '')}->{j} {d:+.2f}" for n, j, d in zip(c["joint_names"], sdk_idx,
+                                                                      c["default_joint_angles"])))
+diff -ruN a/go2_env.py b/go2_env.py
+--- a/go2_env.py	2026-11-03 22:03:12.596521431 +0900
++++ b/go2_env.py	2026-11-03 22:03:12.598232385 +0900
+@@ -33,6 +33,34 @@
+ GO2_MJCF_LOWER_LEG = {"mass": 0.241352, "com": (0.00629595, 0.000622121, -0.141417)}
+ URDF_FOOT_MASS, URDF_FOOT_POS = 0.04, (-0.002, 0.0, -0.213)  # go2.urdf foot link, in the calf frame
+ 
++# [P2.4] Trot: feet that move together, as indices in FOOT_LINKS order (FL, FR, RL, RR): FL-RR and FR-RL
++# (go2_metrics.py; Go2Env builds its own self.trot_pairs from env_cfg["foot_links"]). The same indices hold in the
++# SDK leg order FR, FL, RR, RL (go2_kinematics.LEGS, go2_analyze.py): FR-RL and FL-RR.
++TROT_PAIRS = ((0, 3), (1, 2))
++# [P2.4] Walk-these-ways trot phase offsets ("phases" = 0.5, offsets = bounds = 0): FL and RR half a cycle after FR, RL
++WTW_TROT_OFFSETS = {"FL": 0.5, "FR": 0.0, "RL": 0.0, "RR": 0.5}
++
++
++def num_clock_obs(env_cfg):
++    """[P2.4] Number of gait-clock observations: sin and cos of each foot's phase with --gait wtw, else 0."""
++    return 2 * len(env_cfg.get("foot_links", FOOT_LINKS)) if env_cfg.get("gait_clock") else 0
++
++
++def gait_targets(phase, offsets, duty, kappa):
++    """[P2.4] Walk-these-ways contact schedule (go1_gym legged_robot.py _step_contact_targets), as a function.
++
++    phase [N] in [0, 1): global gait phase. offsets [F]: per-foot phase offsets. duty: stance share of the cycle.
++    Returns (foot_phase [N, F], desired_contact [N, F]). foot_phase is warped so that stance is [0, 0.5) and swing
++    [0.5, 1) whatever the duty; desired_contact is ~1 in stance and ~0 in swing, smoothed by normal CDFs of width kappa
++    at the transitions (WTW kappa_gait_probs = 0.07). go2_fsm.py gait_clock() is the numpy twin of the clock part.
++    """
++    raw = torch.remainder(phase[:, None] + offsets, 1.0)
++    warped = torch.where(raw < duty, raw * (0.5 / duty), 0.5 + (raw - duty) * (0.5 / (1.0 - duty)))
++    cdf = lambda x: 0.5 * (1.0 + torch.erf(x / (kappa * math.sqrt(2.0))))  # normal CDF, mean 0, std kappa
++    desired = cdf(warped) * (1.0 - cdf(warped - 0.5)) + cdf(warped - 1.0) * (1.0 - cdf(warped - 1.5))
++    return warped, desired
++
++
+ # [P1.2] Physics used when a config does not say otherwise (runs trained before P1.2 included), so that every
+ # policy is evaluated in the same simulated world.
+ PHYSICS_DEFAULTS = {
+@@ -53,10 +81,11 @@
+     return (upper - lower) * torch.rand(size=shape, dtype=gs.tc_float, device=gs.device) + lower
+ 
+ 
+-def obs_noise_scales(obs_cfg, num_actions, num_commands=3):
++def obs_noise_scales(obs_cfg, num_actions, num_commands=3, num_clock=0):
+     """[P1.2] Half-width of the uniform observation noise, per observation dimension (legged_gym noise_scales, in
+     physical units, scaled like the observation). [P1.4] Moved out of Go2Env so go2_train.py can reuse it.
+-    [P1.6] num_commands: 4 with the body-height command, so the vector keeps the size of the observation."""
++    [P1.6] num_commands: 4 with the body-height command, so the vector keeps the size of the observation.
++    [P2.4] num_clock: gait-clock entries at the end of the observation (no noise: computed, not measured)."""
+     noise_scales, obs_scales = obs_cfg["noise_scales"], obs_cfg["obs_scales"]
+     segments = (
+         (3, noise_scales["ang_vel"] * obs_scales["ang_vel"]),
+@@ -65,6 +94,7 @@
+         (num_actions, noise_scales["dof_pos"] * obs_scales["dof_pos"]),
+         (num_actions, noise_scales["dof_vel"] * obs_scales["dof_vel"]),
+         (num_actions, 0.0),  # last actions
++        (num_clock, 0.0),  # [P2.4] gait clock
+     )
+     n_level = obs_cfg.get("noise_level", 1.0)
+     return [n_level * s for n, s in segments for _ in range(n)]
+@@ -316,6 +346,33 @@
+         # [S2R] foot-sphere centre position and velocity, world frame, same foot order as self.foot_links
+         self.feet_pos = torch.zeros((self.num_envs, n_feet, 3), dtype=gs.tc_float, device=gs.device)
+         self.feet_vel = torch.zeros_like(self.feet_pos)
++        # [P2.4] contact timers (Isaac Lab ContactSensor track_air_time) on the same filtered contact: feet_air_time is
++        # the current air time, feet_contact_time the current contact time, and the last complete swing / stance
++        # durations are kept for the air-time variance penalty
++        self.feet_contact_time = torch.zeros_like(self.feet_air_time)
++        self.feet_last_air_time = torch.zeros_like(self.feet_air_time)
++        self.feet_last_contact_time = torch.zeros_like(self.feet_air_time)
++        # [P2.5] mechanical power of the 12 motors, sum over joints of |tau * qdot|, averaged over the physics steps of
++        # the last policy step [W] (energy reward; power and CoT in go2_metrics.py)
++        self.mech_power = torch.zeros((self.num_envs,), dtype=gs.tc_float, device=gs.device)
++        # [P2.4] optional walk-these-ways gait clock (env_cfg["gait_clock"], go2_train.py --gait wtw): a periodic
++        # contact schedule whose per-foot phases are appended to the observation as sin / cos
++        clock = self.env_cfg.get("gait_clock") or {}
++        self.gait_clock = bool(clock)
++        self.num_clock_obs = num_clock_obs(self.env_cfg)
++        self.gait_frequency = float(clock.get("frequency", 2.0))  # [Hz]
++        self.gait_duty = float(clock.get("duty", 0.5))  # stance share of the cycle
++        self.gait_kappa = float(clock.get("kappa", 0.07))
++        offsets = clock.get("offsets", WTW_TROT_OFFSETS)
++        self.gait_offsets = torch.tensor(
++            [offsets[name.split("_")[0]] for name in self.foot_links], dtype=gs.tc_float, device=gs.device
++        )
++        self.gait_phase = torch.zeros((self.num_envs,), dtype=gs.tc_float, device=gs.device)  # global phase in [0, 1)
++        self.foot_phase = torch.zeros((self.num_envs, n_feet), dtype=gs.tc_float, device=gs.device)  # warped phase
++        self.desired_contact = torch.ones_like(self.foot_phase)  # 1 = stance wanted, 0 = swing wanted
++        # [P2.4] trot pairs as indices into self.foot_links (FL-RR, FR-RL), whatever the order of foot_links
++        feet = [name.split("_")[0] for name in self.foot_links]
++        self.trot_pairs = ((feet.index("FL"), feet.index("RR")), (feet.index("FR"), feet.index("RL")))
+ 
+         # [P1.2] per-episode actuator randomization (sampled in _reset_idx)
+         self.kp = torch.full((self.num_envs, 1), self.kp_nominal, dtype=gs.tc_float, device=gs.device)
+@@ -342,7 +399,9 @@
+         if self.add_noise:
+             # [P1.4] computed by obs_noise_scales(), also used for the CAPS sigma in go2_train.py
+             self.noise_scale_vec = torch.tensor(
+-                obs_noise_scales(self.obs_cfg, self.num_actions, self.num_commands), dtype=gs.tc_float, device=gs.device
++                obs_noise_scales(self.obs_cfg, self.num_actions, self.num_commands, self.num_clock_obs),  # [P2.4]
++                dtype=gs.tc_float,
++                device=gs.device,
+             )
+ 
+         # [P1.2] friction, base mass and CoM: sampled once per env, after build (Genesis DR guide; legged_gym also
+@@ -357,6 +416,8 @@
+             self.reward_scales[name] *= self.dt
+             self.reward_functions[name] = getattr(self, "_reward_" + name)
+             self.episode_sums[name] = torch.zeros((self.num_envs,), dtype=gs.tc_float, device=gs.device)
++        if {"contact_schedule_force", "contact_schedule_vel"} & self.reward_scales.keys() and not self.gait_clock:
++            raise ValueError("the contact_schedule_* rewards need env_cfg['gait_clock'] (go2_train.py --gait wtw)")
+ 
+         self.reset()
+ 
+@@ -598,6 +659,7 @@
+         # instead of the example's fixed one-policy-step delay (= latency_steps == decimation).
+         target_new = self.actions * self.env_cfg["action_scale"] + self.default_dof_pos
+         target_old = self.last_actions * self.env_cfg["action_scale"] + self.default_dof_pos
++        self.mech_power.zero_()  # [P2.5]
+         for i in range(self.decimation):
+             target = torch.where((i < self.latency_steps)[:, None], target_old, target_new)
+             q = self.robot.get_dofs_position(self.motors_dof_idx)
+@@ -605,8 +667,13 @@
+             torques = self.motor_strength * (self.kp * (target - q) - self.kd * qd)
+             self.torques = torch.clip(torques, -self.torque_limits, self.torque_limits)  # URDF effort limits
+             self.torques_substeps[:, i] = self.torques  # [P1.4]
++            # [P2.5] motor power of this physics step: |tau * qdot| per joint, negative work not recovered. The joint
++            # losses ([S2R] friction, damping) act outside the motor, so they show up here only through the torque the
++            # PD needs to overcome them (as tau_est * dq on the robot, go2_analyze.py power[W])
++            self.mech_power += torch.sum(torch.abs(self.torques * qd), dim=1)
+             self.robot.control_dofs_force(self.torques[:, self.actions_dof_idx], self.motors_dof_slice)
+             self.scene.step()
++        self.mech_power /= self.decimation  # [P2.5] mean over the policy step [W]
+ 
+         # update buffers
+         self.episode_length_buf += 1
+@@ -631,6 +698,11 @@
+         # [P1.1] "zero command" = all three components zero (the deadzone makes it exact)
+         # [P1.6] velocities only: the body-height offset is not a motion command
+         self.zero_cmd = torch.linalg.norm(self.commands[:, :3], dim=1) < 0.1
++        # [P2.4] walk-these-ways order: the clock advances after the physics step, so the reward compares the contacts
++        # just produced with the schedule at the new phase, and the next observation carries that phase
++        if self.gait_clock:
++            self.gait_phase = torch.remainder(self.gait_phase + self.dt * self.gait_frequency, 1.0)
++            self._update_gait_targets()
+ 
+         # compute reward
+         self.rew_buf.zero_()
+@@ -688,9 +760,28 @@
+         self.feet_first_contact = (self.feet_air_time > 0.0) & contact_filt
+         self.feet_air_time += self.dt
+         self.feet_air_time_at_touchdown = self.feet_air_time * self.feet_first_contact
++        # [P2.4] last complete swing (at touchdown) and stance (at lift-off), current contact time (Isaac Lab
++        # ContactSensor: last_air_time, last_contact_time, current_contact_time)
++        first_detach = (self.feet_contact_time > 0.0) & ~contact_filt
++        self.feet_contact_time += self.dt
++        torch.where(self.feet_first_contact, self.feet_air_time, self.feet_last_air_time, out=self.feet_last_air_time)
++        torch.where(first_detach, self.feet_contact_time, self.feet_last_contact_time, out=self.feet_last_contact_time)
++        self.feet_contact_time.masked_fill_(~contact_filt, 0.0)
+         self.feet_air_time.masked_fill_(contact_filt, 0.0)
+         self.feet_contact = contact_filt
+ 
++    def _update_gait_targets(self):
++        """[P2.4] Per-foot phase and desired contact of the walk-these-ways schedule at the current gait phase."""
++        self.foot_phase, self.desired_contact = gait_targets(
++            self.gait_phase, self.gait_offsets, self.gait_duty, self.gait_kappa
++        )
++
++    def clock_obs(self):
++        """[P2.4] Gait-clock observation [N, 8]: sin and cos of each foot's warped phase, feet in foot_links order.
++        go2_fsm.py gait_clock() computes the same values on the robot."""
++        angle = 2.0 * math.pi * self.foot_phase
++        return torch.cat((torch.sin(angle), torch.cos(angle)), dim=-1)
++
+     def get_observations(self):
+         return TensorDict({"policy": self.obs_buf}, batch_size=[self.num_envs])
+ 
+@@ -723,6 +814,10 @@
+             self.last_dof_vel.zero_()
+             self.feet_air_time.zero_()  # [P1.1]
+             self.last_feet_contact.zero_()  # [P1.1]
++            for timer in (self.feet_contact_time, self.feet_last_air_time, self.feet_last_contact_time):  # [P2.4]
++                timer.zero_()
++            self.gait_phase.zero_()  # [P2.4]
++            self.mech_power.zero_()  # [P2.5]
+             self.episode_length_buf.zero_()
+             self.reset_buf.fill_(True)
+         else:
+@@ -741,8 +836,14 @@
+             self.last_dof_vel.masked_fill_(envs_idx[:, None], 0.0)
+             self.feet_air_time.masked_fill_(envs_idx[:, None], 0.0)  # [P1.1]
+             self.last_feet_contact.masked_fill_(envs_idx[:, None], False)  # [P1.1]
++            for timer in (self.feet_contact_time, self.feet_last_air_time, self.feet_last_contact_time):  # [P2.4]
++                timer.masked_fill_(envs_idx[:, None], 0.0)
++            self.gait_phase.masked_fill_(envs_idx, 0.0)  # [P2.4]
++            self.mech_power.masked_fill_(envs_idx, 0.0)  # [P2.5]
+             self.episode_length_buf.masked_fill_(envs_idx, 0)
+             self.reset_buf.masked_fill_(envs_idx, True)
++        if self.gait_clock:  # [P2.4] schedule at phase 0 for the first observation of the new episode
++            self._update_gait_targets()
+ 
+         self._resample_actuation(envs_idx)  # [P1.2]
+         if self.recovery_init_prob > 0:  # [P1.5]
+@@ -768,17 +869,17 @@
+         self._resample_commands(envs_idx)
+ 
+     def _update_observation(self):
+-        self.obs_buf = torch.concatenate(
+-            (
+-                self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+-                self.projected_gravity,  # 3
+-                self.commands * self.commands_scale,  # 3, or 4 with the body-height command [P1.6]
+-                (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
+-                self.dof_vel * self.obs_scales["dof_vel"],  # 12
+-                self.actions,  # 12
+-            ),
+-            dim=-1,
+-        )
++        parts = [
++            self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
++            self.projected_gravity,  # 3
++            self.commands * self.commands_scale,  # 3, or 4 with the body-height command [P1.6]
++            (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
++            self.dof_vel * self.obs_scales["dof_vel"],  # 12
++            self.actions,  # 12
++        ]
++        if self.gait_clock:  # [P2.4] 8: appended at the end, so the first 45 (46) entries keep the P1 layout
++            parts.append(self.clock_obs())
++        self.obs_buf = torch.concatenate(parts, dim=-1)
+         if self.add_noise:  # [P1.2] uniform noise, as legged_gym
+             self.obs_buf += (2.0 * torch.rand_like(self.obs_buf) - 1.0) * self.noise_scale_vec
+ 
+@@ -839,9 +940,15 @@
+         # [P1.1] legged_gym: on each touchdown, reward (air time - target), i.e. long steps; this also stops the
+         # feet from shuffling. Paid only for a non-zero command, otherwise it would reward stepping in place.
+         # (legged_gym gates on |cmd_xy| > 0.1; the yaw command counts here too, so turning in place is stepped.)
+-        rew = torch.sum(
+-            (self.feet_air_time_at_touchdown - self.reward_cfg["feet_air_time_target"]) * self.feet_first_contact, dim=1
+-        )
++        # [P2.1] Summed over touchdowns this is (total airborne time) - target x (number of touchdowns): the target is
++        # the price of one step, in seconds of swing (TEST_AND_TINKER_P2.md 5.1). Optional cap feet_air_time_max (Isaac
++        # Lab Spot caps at mode_time): a foot held in the air earns at most (max - target) per touchdown, which removes
++        # the "lame leg" incentive. None (default) = legged_gym, uncapped.
++        air_time = self.feet_air_time_at_touchdown
++        air_time_max = self.reward_cfg.get("feet_air_time_max")
++        if air_time_max is not None:
++            air_time = air_time.clip(max=air_time_max)
++        rew = torch.sum((air_time - self.reward_cfg["feet_air_time_target"]) * self.feet_first_contact, dim=1)
+         return rew * ~self.zero_cmd
+ 
+     def _reward_foot_clearance(self):
+@@ -907,3 +1014,63 @@
+         # close to the default pose, once upright
+         pose = torch.exp(-torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1))
+         return pose * self._reward_rec_upright()
++
++    # [P2.4] Gait pattern, option A (go2_train.py --gait spot): Isaac Lab Spot GaitReward + air-time variance penalty
++    def _gait_active(self):
++        # as Spot: enforce the gait when a motion is commanded or the base moves (e.g. pushed) faster than a threshold
++        base_speed = torch.linalg.norm(self.base_lin_vel[:, :2], dim=1)
++        return ~self.zero_cmd | (base_speed > self.reward_cfg.get("gait_velocity_threshold", 0.5))
++
++    def _reward_gait(self):
++        # Spot GaitReward for a trot (synced pairs FL-RR and FR-RL). Synced feet: same current air and contact times.
++        # Feet of different pairs: the air time of one equals the contact time of the other. Squared errors [s^2]
++        # clipped at max_err^2, exp kernels of width std, product of the 6 terms -> 1 for a perfect 50 % duty trot.
++        std = self.reward_cfg.get("gait_std", 0.1)
++        max_sq = self.reward_cfg.get("gait_max_err", 0.2) ** 2
++        air, con = self.feet_air_time, self.feet_contact_time  # current air / contact time [N, 4]
++
++        def err(a, b):
++            return torch.clip(torch.square(a - b), max=max_sq)
++
++        def sync(i, j):
++            return torch.exp(-(err(air[:, i], air[:, j]) + err(con[:, i], con[:, j])) / std)
++
++        def anti(i, j):
++            return torch.exp(-(err(air[:, i], con[:, j]) + err(con[:, i], air[:, j])) / std)
++
++        (a0, a1), (b0, b1) = self.trot_pairs
++        rew = sync(a0, a1) * sync(b0, b1) * anti(a0, b0) * anti(a1, b1) * anti(a0, b1) * anti(b0, a1)
++        return rew * self._gait_active()
++
++    def _reward_air_time_variance(self):
++        # Spot air_time_variance_penalty (also in unitree_rl_lab's Go2 config, weight -1): variance over the 4 feet of
++        # the last swing and last stance durations, clipped at 0.5 s. Gated like the gait reward (a standing robot's
++        # timers are stale, the term would be a constant there).
++        clip = self.reward_cfg.get("air_time_variance_clip", 0.5)
++        variance = torch.var(self.feet_last_air_time.clip(max=clip), dim=1) + torch.var(
++            self.feet_last_contact_time.clip(max=clip), dim=1
++        )
++        return variance * self._gait_active()
++
++    # [P2.4] Gait pattern, option B (go2_train.py --gait wtw): walk-these-ways periodic contact schedule
++    def _schedule(self):
++        # desired contact of the clock; at zero command all four feet stand (WTW keeps stepping in place instead)
++        return torch.where(self.zero_cmd[:, None], torch.ones_like(self.desired_contact), self.desired_contact)
++
++    def _reward_contact_schedule_force(self):
++        # WTW tracking_contacts_shaped_force, written as a penalty: contact force on a foot that should swing
++        force = self.link_contact_force[:, self.feet_link_idx]
++        sigma = self.reward_cfg.get("gait_force_sigma", 100.0)  # [N^2]
++        return torch.sum((1.0 - self._schedule()) * (1.0 - torch.exp(-torch.square(force) / sigma)), dim=1) / 4.0
++
++    def _reward_contact_schedule_vel(self):
++        # WTW tracking_contacts_shaped_vel, written as a penalty: speed of a foot that should stand
++        speed = torch.linalg.norm(self.feet_vel, dim=-1)
++        sigma = self.reward_cfg.get("gait_vel_sigma", 10.0)  # [m^2/s^2]
++        return torch.sum(self._schedule() * (1.0 - torch.exp(-torch.square(speed) / sigma)), dim=1) / 4.0
++
++    # [P2.5] Energy (go2_train.py --energy)
++    def _reward_energy(self):
++        # mechanical power of the motors [W], sum over joints of |tau * qdot| (see step()); the same quantity as
++        # power[W] in go2_metrics.py, whose CoT = power / (m g v)
++        return self.mech_power
+diff -ruN a/go2_export.py b/go2_export.py
+--- a/go2_export.py	2026-11-03 22:03:12.611096193 +0900
++++ b/go2_export.py	2026-11-03 22:03:12.612836919 +0900
+@@ -4,8 +4,9 @@
+     python go2_export.py -e go2-p15 --ckpt 999
+ writes logs/<exp>/exported/
+     policy.pt         TorchScript actor (mean action): obs [B, 45] -> action [B, 12] (46 inputs with the body-height
+-                      command). [P1.6] A recurrent actor exports for batch 1 and keeps its memory between calls;
+-                      reset() clears it (an MLP export has an empty reset(), so the robot side can always call it).
++                      command, + 8 gait-clock inputs with --gait wtw [P2.4]). [P1.6] A recurrent actor exports for
++                      batch 1 and keeps its memory between calls; reset() clears it (an MLP export has an empty reset(),
++                      so the robot side can always call it).
+     deploy_cfg.json   everything the robot side needs to build the observation and apply the action
+                       (joint order, default pose, scales, gains, command ranges and deadzones, joint limits)
+ go2_fsm.py (robot side) only reads these two files, so the robot computer needs neither Genesis nor rsl_rl.
+@@ -25,9 +26,12 @@
+ import genesis as gs
+ from go2_env import Go2Env, nominal_world
+ 
+-def obs_layout(num_commands):
+-    return ["base_ang_vel*ang_vel_scale (3)", "projected_gravity (3)", f"commands*commands_scale ({num_commands})",
+-            "(dof_pos-default)*dof_pos_scale (12)", "dof_vel*dof_vel_scale (12)", "last_action (12)"]
++def obs_layout(num_commands, num_clock=0):
++    layout = ["base_ang_vel*ang_vel_scale (3)", "projected_gravity (3)", f"commands*commands_scale ({num_commands})",
++              "(dof_pos-default)*dof_pos_scale (12)", "dof_vel*dof_vel_scale (12)", "last_action (12)"]
++    if num_clock:  # [P2.4]
++        layout.append(f"gait clock: sin of each foot's phase, then cos, feet in gait_clock.feet order ({num_clock})")
++    return layout
+ 
+ 
+ def make_deploy_cfg(env, recurrent=False):
+@@ -39,6 +43,14 @@
+                       "ang_vel": list(cc["ang_vel_range"])}
+     if env.num_commands >= 4:  # [P1.6] body-height offset dh [m]
+         command_ranges["body_height"] = list(cc["body_height_range"])
++    extra = {}
++    if env.gait_clock:  # [P2.4] the robot side recomputes the clock (go2_fsm.gait_clock), so it needs its parameters
++        extra["gait_clock"] = {
++            "feet": [name.split("_")[0] for name in env.foot_links],  # clock order
++            "offsets": env.gait_offsets.cpu().tolist(),  # same order
++            "frequency": env.gait_frequency,  # [Hz]
++            "duty": env.gait_duty,
++        }
+     return {
+         "joint_names": list(env.env_cfg["joint_names"]),  # policy order = action order = observation order
+         "default_joint_angles": env.default_dof_pos.cpu().tolist(),
+@@ -57,7 +69,11 @@
+         "policy_dt": float(env.dt),
+         "torque_limits": env.torque_limits.cpu().tolist(),
+         "dof_pos_limits": torch.stack((q_lo, q_hi), dim=-1).cpu().tolist(),
+-        "obs_layout": obs_layout(env.num_commands),
++        "obs_layout": obs_layout(env.num_commands, env.num_clock_obs),  # [P2.4]
++        # [P2] for the record: the passive joint model the policy was trained with ([S2R]; not used on the robot)
++        "joint_friction": float(env.env_cfg.get("joint_friction", 0.0)),
++        "joint_damping": float(env.env_cfg.get("joint_damping", 0.0)),
++        **extra,
+     }
+ 
+ 
+diff -ruN a/go2_feet_plot.py b/go2_feet_plot.py
+--- a/go2_feet_plot.py	1970-01-01 09:00:00.000000000 +0900
++++ b/go2_feet_plot.py	2026-11-03 22:03:12.636994579 +0900
+@@ -0,0 +1,98 @@
++"""
++go2_feet_plot.py - [P2] Foot trajectories of one env from a go2_metrics.py recording (metrics_*.npz). No Genesis needed.
++
++    python go2_feet_plot.py logs/go2-p22/metrics_ckpt1999_seed0.npz --cmd 0.5 0 0 --target 0.075
++    python go2_feet_plot.py logs/go2-p22/metrics_ckpt1999_seed0.npz --cmd 0 0.3 0 --env 3 --seconds 3
++
++One row per foot (FL, FR, RL, RR), shared time axis:
++    clearance [cm]   height of the sphere bottom above the ground (what swing_h measures at its peak), with the
++                     --target clearance as a dashed line (P2.2), stance shaded
++    speed [m/s]      horizontal speed of the contact point (bottom of the sphere: centre velocity + omega x r, as
++                     slip_v in go2_metrics.py): the swing motion, and in stance the slip. A dragged toe shows either
++                     as low AND fast outside the shaded stance (light contact, < 3 N), or as speed inside it (slip)
++Read the swing shape (P2.2: flat top near the target, no scuffing before touchdown), the timing (P2.1: swing length,
++P2.4: diagonal pairs FL-RR and FR-RL lifting together) and left / right differences (P2.3: FL vs FR, RL vs RR).
++"""
++
++import argparse
++import os
++
++import numpy as np
++
++FEET = ["FL", "FR", "RL", "RR"]
++CONTACT_N = 3.0  # [N] as go2_metrics.py
++FOOT_R = 0.023  # [m] as go2_metrics.py (go2_env.GO2_FOOT_RADIUS)
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument("npz", help="metrics_ckpt<N>_seed<S>[_tag].npz written by go2_metrics.py")
++    p.add_argument("--cmd", type=float, nargs="+", default=[0.5, 0.0, 0.0], metavar="V", help="bin: VX VY WZ [DH]")
++    p.add_argument("--env", type=int, default=0, help="which env of the bin (0 = first)")
++    p.add_argument("--seconds", type=float, default=2.0, help="length of the plotted window [s]")
++    p.add_argument("--target", type=float, default=None, help="clearance target [m] to draw (e.g. 0.075)")
++    p.add_argument("--dt", type=float, default=0.02, help="policy period [s]")
++    p.add_argument("--out", type=str, default=None, help="default: feet_<cmd>_env<i>.png next to the npz")
++    args = p.parse_args()
++
++    d = np.load(args.npz)
++    grid, bin_id = d["grid"], d["bin_id"]
++    cmd = np.array(args.cmd + [0.0] * (grid.shape[1] - len(args.cmd)))[: grid.shape[1]]
++    rows = np.flatnonzero(np.abs(grid - cmd).sum(1) < 1e-6)
++    if rows.size == 0:
++        raise SystemExit(f"no bin {cmd} in {args.npz}; bins: {[tuple(np.round(g, 3)) for g in grid]}")
++    envs = np.flatnonzero(bin_id == rows[0])
++    n = envs[min(args.env, envs.size - 1)]
++    valid = d["valid"][:, n]
++    T = min(int(valid.sum()), round(args.seconds / args.dt))
++    if T < 2:
++        raise SystemExit(f"env {n} fell at the start of the measurement: pick another --env")
++    t = np.arange(T) * args.dt
++    z = d["foot_pos"][:T, n, :, 2] - FOOT_R  # [T, 4] clearance
++    v, w = d["foot_vel"][:T, n], d["foot_ang"][:T, n]  # [T, 4, 3] centre velocity, angular velocity
++    speed = np.hypot(v[..., 0] - FOOT_R * w[..., 1], v[..., 1] + FOOT_R * w[..., 0])  # contact point, as m_slip
++    contact = np.linalg.norm(d["foot_force"][:T, n], axis=-1) > CONTACT_N  # [T, 4]
++
++    import matplotlib
++
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++
++    ink, muted, hairline, band = "#0b0b0b", "#52514e", "#e6e5e0", "#ecebe6"
++    c_z, c_v = "#2a78d6", "#eb6834"
++    fig, axes = plt.subplots(4, 1, figsize=(9, 7), sharex=True)
++    twins = []
++    for f, ax in enumerate(axes):
++        for a, b in zip(*np.flatnonzero(np.diff(np.concatenate(([0], contact[:, f], [0])))).reshape(-1, 2).T):
++            ax.axvspan(t[a], t[min(b, T - 1)], color=band, linewidth=0)
++        ax.plot(t, 100 * z[:, f], color=c_z, linewidth=1.6)
++        if args.target is not None:
++            ax.axhline(100 * args.target, color=c_z, linewidth=0.8, linestyle=(0, (4, 3)))
++        ax.set_ylabel(f"{FEET[f]}\ncm", fontsize=8, color=ink, rotation=0, ha="right", va="center")
++        ax.set_ylim(bottom=-0.5)
++        ax2 = ax.twinx()
++        twins.append(ax2)
++        ax2.plot(t, speed[:, f], color=c_v, linewidth=1.0, linestyle="--")
++        ax2.set_ylim(bottom=0.0)
++        ax2.tick_params(labelsize=7, colors=muted)
++        ax.tick_params(labelsize=7, colors=muted)
++        ax.grid(True, axis="y", color=hairline, linewidth=0.6)
++        ax.spines["top"].set_visible(False)
++        ax2.spines["top"].set_visible(False)
++    axes[0].legend([axes[0].lines[0], twins[0].lines[0]],
++                   ["clearance [cm] (left axis)", "contact-point speed [m/s] (right axis, dashed)"],
++                   frameon=False, fontsize=7, loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=2)
++    axes[-1].set_xlabel("time since start of measurement [s]  (shaded = stance, |F| > 3 N)", fontsize=8, color=ink)
++    title = f"{os.path.basename(args.npz)} | cmd {' '.join(f'{x:+.2f}' for x in cmd)} | env {n}"
++    if args.target is not None:
++        title += f" | dashed: target {100 * args.target:.1f} cm"
++    fig.suptitle(title, fontsize=9, color=ink, x=0.01, ha="left")
++    fig.tight_layout()
++    out = args.out or os.path.join(os.path.dirname(args.npz) or ".",
++                                   f"feet_{'_'.join(f'{x:g}' for x in cmd)}_env{n}.png")
++    fig.savefig(out, dpi=150)
++    print(f"foot plot saved to {out}")
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN a/go2_fsm.py b/go2_fsm.py
+--- a/go2_fsm.py	2026-11-03 22:03:12.614447189 +0900
++++ b/go2_fsm.py	2026-11-03 22:03:12.616184117 +0900
+@@ -30,6 +30,8 @@
+     trained range, back to 0 (nominal height) at each policy start.
+     [S2R] L1+X (policy mode) starts the command profile loaded with load_profile(); it replaces the sticks until it
+     ends or a stick is pushed past go2_inputs.STICK_ABORT. L1+B (standing, joint test allowed) starts the joint test.
++    [P2.4] Policies trained with --gait wtw get a gait clock in their observation: Policy runs it (phase 0 at each
++    policy start, + frequency x policy_dt per policy step), exactly as Go2Env does.
+ 
+ [S2R] Safety on every command: position targets clipped to the URDF joint range; damping when a joint is asked for more
+ than torque_trip_ratio x its motor limit for torque_trip_s (a wrong joint order or sign, a leg fighting an obstacle, an
+@@ -93,6 +95,16 @@
+     combos: dict = field(default_factory=lambda: dict(COMBOS))
+ 
+ 
++def gait_clock(phase, offsets, duty):
++    """[P2.4] Gait-clock observation, numpy twin of Go2Env.clock_obs() / go2_env.gait_targets(): per-foot phase
++    (global phase + offset), warped so that stance is [0, 0.5) and swing [0.5, 1), then sin of each foot followed by
++    cos of each foot (feet in deploy_cfg["gait_clock"]["feet"] order)."""
++    raw = np.remainder(phase + np.asarray(offsets, dtype=float), 1.0)
++    warped = np.where(raw < duty, raw * (0.5 / duty), 0.5 + (raw - duty) * (0.5 / (1.0 - duty)))
++    angle = 2.0 * np.pi * warped
++    return np.concatenate((np.sin(angle), np.cos(angle)))
++
++
+ def projected_gravity(quat_wxyz):
+     """Gravity direction in the base frame, R^T (0, 0, -1), for a (w, x, y, z) base orientation.
+     Same as Go2Env: transform_by_quat(global_gravity, inv_quat(base_quat)); same as unitree_rl_gym."""
+@@ -124,7 +136,8 @@
+     """Exported policy (go2_export.py): TorchScript network + deploy_cfg.json.
+ 
+     Builds the observation exactly as Go2Env._update_observation() (go2_fsm_sim.py checks it against the env):
+-    base angular velocity, projected gravity, command, joint positions - default, joint velocities, last action.
++    base angular velocity, projected gravity, command, joint positions - default, joint velocities, last action
++    [, P2.4 gait clock].
+     policy_dir=None -> zero actions, i.e. hold the default pose with the policy gains (bench tests only).
+     [S2R] zero_action=True reads deploy_cfg.json from policy_dir but not the network (first runs on the robot).
+     """
+@@ -136,7 +149,12 @@
+         self.cfg = deploy_cfg
+         self.net = None
+         n = len(deploy_cfg["joint_names"])
+-        self.n_obs = 3 + 3 + int(deploy_cfg.get("num_commands", 3)) + 3 * n  # [S2R]
++        # [P2.4] gait clock (exports of --gait wtw runs): phase in [0, 1), advanced after every policy step
++        self.clock = deploy_cfg.get("gait_clock")
++        self.phase = 0.0
++        self.steps_since_reset = 0  # policy steps since the last reset() (go2_fsm_sim.py checks the clock timing)
++        n_clock = 2 * len(self.clock["offsets"]) if self.clock else 0
++        self.n_obs = 3 + 3 + int(deploy_cfg.get("num_commands", 3)) + 3 * n + n_clock  # [S2R] [P2.4]
+         self.warmup_s = 0.0
+         if policy_dir is not None and not zero_action:
+             import torch
+@@ -163,21 +181,24 @@
+ 
+     def reset(self):
+         self.last_action[:] = 0.0
++        self.phase = 0.0  # [P2.4] as Go2Env at the start of an episode
++        self.steps_since_reset = 0
+         if self.net is not None:  # [P1.6] clear the memory of a recurrent export (empty reset() for an MLP)
+             self.net.reset()
+ 
+     def observation(self, gyro, quat_wxyz, q, dq, cmd):
+         s = self.obs_scales
+-        return np.concatenate(
+-            (
+-                np.asarray(gyro) * s["ang_vel"],
+-                projected_gravity(quat_wxyz),
+-                np.asarray(cmd) * self.commands_scale,
+-                (np.asarray(q) - self.default_q) * s["dof_pos"],
+-                np.asarray(dq) * s["dof_vel"],
+-                self.last_action,
+-            )
+-        ).astype(np.float32)
++        parts = [
++            np.asarray(gyro) * s["ang_vel"],
++            projected_gravity(quat_wxyz),
++            np.asarray(cmd) * self.commands_scale,
++            (np.asarray(q) - self.default_q) * s["dof_pos"],
++            np.asarray(dq) * s["dof_vel"],
++            self.last_action,
++        ]
++        if self.clock:  # [P2.4]
++            parts.append(gait_clock(self.phase, self.clock["offsets"], self.clock["duty"]))
++        return np.concatenate(parts).astype(np.float32)
+ 
+     def step(self, gyro, quat_wxyz, q, dq, cmd):
+         """One policy step: returns the joint position targets [rad]."""
+@@ -193,7 +214,10 @@
+             raise FloatingPointError("policy output is not finite")
+         # as Go2Env.step(): the clipped action is applied AND fed back as the last-action observation
+         self.last_action = np.clip(action, -self.clip_actions, self.clip_actions)
++        if self.clock:  # [P2.4] Go2Env advances its clock once per policy step, after the physics
++            self.phase = (self.phase + self.clock["frequency"] * self.cfg["policy_dt"]) % 1.0
+         self.steps += 1
++        self.steps_since_reset += 1
+         return self.default_q + self.action_scale * self.last_action
+ 
+ 
+diff -ruN a/go2_fsm_sim.py b/go2_fsm_sim.py
+--- a/go2_fsm_sim.py	2026-11-03 22:03:12.618090033 +0900
++++ b/go2_fsm_sim.py	2026-11-03 22:03:12.620070374 +0900
+@@ -64,8 +64,11 @@
+     return next((s for t0, t1, s in scn["sticks"] if t0 <= t < t1), (0.0, 0.0, 0.0, 0.0))
+ 
+ 
+-def env_observation(env, gyro, quat, q, dq, cmd, last_action):
+-    """Observation of env 0 computed by Go2Env itself, from the same robot state (reference for the check)."""
++def env_observation(env, gyro, quat, q, dq, cmd, last_action, k=0):
++    """Observation of env 0 computed by Go2Env itself, from the same robot state (reference for the check).
++    [P2.4] k: policy steps since the policy started. Go2Env's clock starts at phase 0 and advances by dt x frequency
++    after each env step, so its phase at the k-th observation is k * dt * frequency: computed here from the env's own
++    dt and frequency, independently of the deploy-side clock, so the check covers its timing too."""
+     dev, f = gs.device, gs.tc_float
+     quat = torch.as_tensor(quat, dtype=f, device=dev)
+     env.base_ang_vel[0] = torch.as_tensor(gyro, dtype=f, device=dev)
+@@ -74,6 +77,9 @@
+     env.dof_pos[0] = torch.as_tensor(q, dtype=f, device=dev)
+     env.dof_vel[0] = torch.as_tensor(dq, dtype=f, device=dev)
+     env.actions[0] = torch.as_tensor(last_action, dtype=f, device=dev)
++    if env.gait_clock:  # [P2.4]
++        env.gait_phase[0] = (k * env.dt * env.gait_frequency) % 1.0
++        env._update_gait_targets()
+     env._update_observation()
+     return env.obs_buf[0].cpu().numpy()
+ 
+@@ -242,9 +248,10 @@
+                             verbose=(i == 0)) for i in range(N)]
+     # The exported deploy_cfg.json must describe the same robot interface as this env
+     exported = fsms[0].policy.cfg
+-    for key in ("joint_names", "default_joint_angles", "kp", "kd", "action_scale", "commands_scale", "obs_scales"):
+-        a, b = exported[key], deploy_cfg[key]
+-        same = a == b if isinstance(a, (str, dict)) or key == "joint_names" else np.allclose(a, b)
++    for key in ("joint_names", "default_joint_angles", "kp", "kd", "action_scale", "commands_scale", "obs_scales",
++                "gait_clock"):  # [P2.4]
++        a, b = exported.get(key), deploy_cfg.get(key)
++        same = a == b if isinstance(a, (str, dict)) or a is None or key == "joint_names" else np.allclose(a, b)
+         if not same:
+             raise SystemExit(f"deploy_cfg.json and the env disagree on {key}: {a} vs {b}")
+     profile = CommandProfile(args.profile, fsms[0].num_commands) if args.profile else None  # [S2R]
+@@ -329,7 +336,10 @@
+         pol = fsms[0].policy
+         if pol.steps != n_policy_steps:  # the policy ran during this update
+             n_policy_steps = pol.steps
+-            ref = env_observation(env, gyron[0], quatn[0], qn[0], dqn[0], fsms[0].command, pol.last_obs[-12:])
++            start = 6 + pol.commands_scale.size + 24  # [P2.4] last action: after gyro, gravity, commands, q, dq
++            last_action = pol.last_obs[start:start + 12]  # (no longer the last 12 entries when a clock follows)
++            ref = env_observation(env, gyron[0], quatn[0], qn[0], dqn[0], fsms[0].command, last_action,
++                                  pol.steps_since_reset - 1)  # [P2.4] index of the observation just used
+             obs_err = max(obs_err, float(np.abs(ref - pol.last_obs).max()))
+             n_checked += 1
+ 
+diff -ruN a/go2_metrics.py b/go2_metrics.py
+--- a/go2_metrics.py	2026-11-03 22:03:12.603312344 +0900
++++ b/go2_metrics.py	2026-11-03 22:03:12.605265163 +0900
+@@ -13,6 +13,10 @@
+ [P1.6] Runs trained with the body-height command get the HEIGHT_GRID bins and a dh column.
+ [P1.6] --tag dr writes metrics_ckpt<N>_seed<S>_dr.csv (and .npz, .png), so a second evaluation of the same
+ checkpoint (here with --keep_dr) does not overwrite the first. go2_compare.py compares the CSV files.
++[P2] Gait quality: air_t and stride (P2.1) in the Gait table, a "Gait pattern & symmetry" table (diag_sync, air_cv,
++air_asym, sym_err: P2.3 / P2.4), the mirror-pair check printed after the tables (P2.3), CoT from the 200 Hz motor
++power (P2.5). Compare CSV files written by the same version of this script only (re-run the baseline after an
++update). go2_analyze.py computes the same gait-pattern columns from deploy logs (Genesis bench, unitree_mujoco, robot).
+ """
+ 
+ import argparse
+@@ -24,9 +28,11 @@
+ import numpy as np
+ import torch
+ from rsl_rl.runners import OnPolicyRunner
++from tensordict import TensorDict
+ 
+ import genesis as gs
+-from go2_env import Go2Env, nominal_world
++from go2_env import Go2Env, nominal_world, GO2_FOOT_RADIUS, TROT_PAIRS
++from go2_symmetry import mirror_actions, mirror_obs  # [P2.3]
+ 
+ 
+ # =============================================================================
+@@ -142,12 +148,24 @@
+         "foot_ang": [],  # [T, N, 4, 3] foot angular velocity, world frame [rad/s]
+         "foot_force": [],  # [T, N, 4, 3] net contact force on each foot, world frame [N]
+         "other_force": [],  # [T, N]   |contact force| on all NON-foot links summed [N]
++        "power": [],     # [T, N]     motor power sum |tau * qdot|, mean over the physics steps [W]  [P2.5]
++        "sym_err": [],   # [T, N]     RMS over joints of policy(mirror(obs)) - mirror(policy(obs)) [rad]  [P2.3]
+     }
++    # [P2.3] the mirrored query must not touch a recurrent policy's memory: MLP policies only
++    check_symmetry = not getattr(policy, "is_recurrent", False)
++    scale = env.env_cfg["action_scale"]
+ 
+     obs = env.reset()
+     with torch.no_grad():
+         for t in range(n_warmup + n_measure):
+             actions = policy(obs)
++            if t >= n_warmup:  # [P2.3] how far the policy is from its own mirror image, in joint-target radians
++                if check_symmetry:
++                    mirrored = policy(TensorDict({"policy": mirror_obs(env, obs["policy"])}, batch_size=[N]))
++                    err = (mirrored - mirror_actions(env, actions)).pow(2).mean(-1).sqrt() * scale
++                else:
++                    err = torch.full((N,), float("nan"), device=dev)
++                log["sym_err"].append(err)
+             obs, _, dones, extras = env.step(actions)
+             policy.reset(dones)  # [P1.6] clear the memory of a reset env (recurrent policy; no-op for an MLP)
+ 
+@@ -179,6 +197,7 @@
+                 log["foot_ang"].append(env.robot.get_links_ang()[:, feet].clone())
+                 log["foot_force"].append(F[:, feet].clone())
+                 log["other_force"].append(torch.linalg.norm(F[:, not_feet], dim=-1).sum(-1))
++                log["power"].append(env.mech_power.clone())  # [P2.5]
+ 
+     rec = {k: torch.stack(v).cpu() for k, v in log.items()}
+     rec["fall_step"] = fall_step.cpu()
+@@ -324,7 +343,12 @@
+ def m_cot(rec, dt):
+     v = rec["valid"]
+     # Mechanical power: sum over joints of |tau * qdot| (negative work is NOT recovered).
+-    power = (rec["torque"] * rec["dof_vel"]).abs().sum(-1)                        # [T, N]  W
++    # [P2.5] averaged over the 200 Hz physics steps by Go2Env (the quantity the energy reward penalizes); before P2.5
++    # it was sampled once per policy step, which misses the PD chatter between samples
++    if "power" in rec:
++        power = rec["power"]                                                       # [T, N]  W
++    else:
++        power = (rec["torque"] * rec["dof_vel"]).abs().sum(-1)                    # [T, N]  W
+     p_mean = masked_mean(power, v)                                                 # [N]
+     speed = masked_mean(torch.linalg.norm(rec["lin_vel"][..., :2], dim=-1), v)    # [N]  m/s
+     cot = p_mean / (rec["mass"] * G * speed.clamp(min=1e-6))
+@@ -334,7 +358,7 @@
+ 
+ 
+ CONTACT_N = 3.0   # [N] |contact force| above this = in contact (stance forces are ~20-50 N)
+-FOOT_R = 0.023    # [m] foot-sphere centre height when the foot is on flat ground (check_feet.py)
++FOOT_R = GO2_FOOT_RADIUS   # [m] foot-sphere centre height when the foot is on flat ground (check_feet.py): 0.023
+ 
+ 
+ def runs(mask):
+@@ -347,6 +371,26 @@
+     return torch.linalg.norm(rec["foot_force"], dim=-1) > CONTACT_N       # [T, N, 4]
+ 
+ 
++def swings(rec, dt):
++    """[P2.1] Every COMPLETE swing (lift-off and touchdown both inside the valid window) of every env and foot:
++    per env a list of (foot, duration [s], peak clearance [m], stride [m]). The stride is the horizontal distance the
++    foot travels from its last contact sample to its first contact sample (= stride length of that foot)."""
++    c = foot_contact(rec).numpy()                      # [T, N, 4]
++    n_ok = rec["valid"].sum(0).numpy()                # valid = a prefix of the window
++    pos = rec["foot_pos"].numpy()                      # [T, N, 4, 3]
++    out = []
++    for n in range(c.shape[1]):
++        L, items = n_ok[n], []
++        for f in range(4):
++            starts, ends = runs(~c[:L, n, f])
++            for a, b in zip(starts, ends):
++                if a > 0 and b < L:
++                    stride = np.linalg.norm(pos[b, n, f, :2] - pos[a - 1, n, f, :2])
++                    items.append((f, (b - a) * dt, pos[a:b, n, f, 2].max() - FOOT_R, stride))
++        out.append(items)
++    return out
++
++
+ def m_gait(rec, dt):
+     v = rec["valid"]                                   # [T, N]
+     vj = v[..., None]                                  # [T, N, 1]
+@@ -364,23 +408,70 @@
+     # Non-foot contacts: share of time any other link (knee, shin, base...) touches the ground.
+     nonfoot = 100.0 * masked_mean((rec["other_force"] > CONTACT_N).float(), v)
+ 
+-    # Swing height: for each COMPLETE swing (lift-off and touchdown both inside the valid
+-    # window), highest foot point minus its on-ground height; averaged over all swings.
+-    z = rec["foot_pos"][..., 2].numpy()
+-    cn, n_ok = c.numpy(), n_valid.numpy()             # valid = a prefix of the window
+-    swing_h = np.full(c.shape[1], np.nan)
+-    for n in range(c.shape[1]):
+-        L, heights = n_ok[n], []
+-        for f in range(4):
+-            starts, ends = runs(~cn[:L, n, f])
+-            heights += [z[a:b, n, f].max() - FOOT_R for a, b in zip(starts, ends) if a > 0 and b < L]
+-        if heights:
+-            swing_h[n] = np.mean(heights)
++    # Means over all complete swings of an env (all feet):
++    # - air_t [P2.1]: swing duration, what the feet_air_time reward pays for (the reward detects contact at 1 N, so
++    #   the swings it sees can be 1-2 policy steps, 0.02-0.04 s, shorter than this 3 N measure),
++    # - stride [P2.1]: horizontal foot travel per swing,
++    # - swing_h: highest foot point minus its on-ground height (clearance of the sphere bottom, target of P2.2).
++    air_t, stride, swing_h = (np.full(c.shape[1], np.nan) for _ in range(3))
++    for n, items in enumerate(swings(rec, dt)):
++        if items:
++            _, durations, heights, strides = zip(*items)
++            air_t[n], swing_h[n], stride[n] = np.mean(durations), np.mean(heights), np.mean(strides)
+ 
+     for x in (step_freq, duty):
+         x[n_valid == 0] = float("nan")
+-    return {"duty[-]": duty, "step_freq[Hz]": step_freq,
+-            "swing_h[cm]": 100.0 * torch.from_numpy(swing_h).float(), "nonfoot[%time]": nonfoot}
++    as_tensor = lambda x: torch.from_numpy(x).float()
++    return {"duty[-]": duty, "step_freq[Hz]": step_freq, "air_t[s]": as_tensor(air_t),
++            "stride[cm]": 100.0 * as_tensor(stride), "swing_h[cm]": 100.0 * as_tensor(swing_h),
++            "nonfoot[%time]": nonfoot}
++
++
++MOVING_CMD = 0.1   # [P2.4] |(vx, vy, wz)| below this = standing command (Go2Env.zero_cmd)
++
++
++def m_gait_pattern(rec, dt):
++    """[P2.4] Is the gait a regular trot?
++    - diag_sync: while at least one foot is in the air, share of time the two feet of each diagonal pair (FL-RR, FR-RL)
++      are in the same contact state, mean of both pairs. 100 % = trot (or pronk: check the gait plot), ~50 % = a
++      4-beat walk or feet unrelated, ~0 % = pace or bound. n/a at standing commands, and when a foot is in the air
++      less than 5 % of the time (no stepping to judge).
++    - air_cv: cycle-to-cycle irregularity: coefficient of variation (std / mean) of each foot's swing durations, mean
++      over the feet with at least 3 complete swings (front and hind feet may swing for different times in a regular
++      gait, so they are not pooled). ~5-15 % for a periodic gait; > 30 % = irregular stepping."""
++    v = rec["valid"]
++    c = foot_contact(rec)                              # [T, N, 4]
++    (a0, a1), (b0, b1) = TROT_PAIRS
++    agree = 0.5 * ((c[..., a0] == c[..., a1]).float() + (c[..., b0] == c[..., b1]).float())   # [T, N]
++    stepping = v & ~c.all(-1)                          # some foot in the air
++    diag = 100.0 * masked_mean(agree, stepping)
++    diag[stepping.sum(0) < 0.05 * v.sum(0).clamp(min=1)] = float("nan")
++    diag[torch.linalg.norm(rec["cmd"][0, :, :3], dim=-1) < MOVING_CMD] = float("nan")
++    cv = np.full(c.shape[1], np.nan)
++    for n, items in enumerate(swings(rec, dt)):
++        per_foot = [np.array([d for f, d, _, _ in items if f == k]) for k in range(4)]
++        cvs = [100.0 * d.std() / d.mean() for d in per_foot if d.size >= 3]
++        if cvs:
++            cv[n] = np.mean(cvs)
++    return {"diag_sync[%]": diag, "air_cv[%]": torch.from_numpy(cv).float()}
++
++
++def m_symmetry(rec, dt):
++    """[P2.3] Left-right symmetry.
++    - sym_err: RMS over joints of policy(mirror(obs)) - mirror(policy(obs)) on the visited states, in joint-target
++      radians (go2_symmetry.py). What the mirror loss minimizes; augmentation drives it down too. n/a for RNNs.
++    - air_asym: mean over the mirror pairs (FL, FR) and (RL, RR) of |mean swing L - mean swing R| / their mean.
++      A limp or a favoured side shows here. n/a when a foot made no complete swing."""
++    sym = masked_mean(rec["sym_err"], rec["valid"])
++    asym = np.full(rec["valid"].shape[1], np.nan)
++    for n, items in enumerate(swings(rec, dt)):
++        per_foot = [[d for f, d, _, _ in items if f == k] for k in range(4)]
++        if all(per_foot):
++            m = [np.mean(d) for d in per_foot]          # FL, FR, RL, RR (FEET order)
++            front = abs(m[0] - m[1]) / (0.5 * (m[0] + m[1]))
++            hind = abs(m[2] - m[3]) / (0.5 * (m[2] + m[3]))
++            asym[n] = 100.0 * 0.5 * (front + hind)
++    return {"sym_err[rad]": sym, "air_asym[%]": torch.from_numpy(asym).float()}
+ 
+ 
+ SPECTRA_BINS = [(0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, 0.5)]  # [P1.4] bins in the plot
+@@ -541,10 +632,18 @@
+     "Smoothness": [m_action_smoothness, m_torque_smoothness],   # [P1.4] split from "Smoothness & actuation"
+     "Actuation limits": [m_torque_limits],
+     "Energy": [m_cot],
+-    "Gait": [m_gait],
++    "Gait": [m_gait],                                             # [P2.1] + air_t, stride
++    "Gait pattern & symmetry": [m_gait_pattern, m_symmetry],      # [P2.3] [P2.4]
+     "Foot slip": [m_slip],
+ }
+ 
++# [P2.3] Mirror-pair check: a symmetric policy performs equally on a command and on its mirror image (Mittal et al.
++# 2024 report this "variation across equivalent goals"). Shown for these metrics, on every pair of grid bins that are
++# mirror images (vy -> -vy, wz -> -wz).
++MIRROR_PAIR_METRICS = ("lin_err[m/s]", "yaw_err[rad/s]", "air_t[s]", "stride[cm]", "power[W]")
++# differences are relative to max(mean of the pair, this floor), so that two near-zero values do not show as 100 %
++MIRROR_PAIR_FLOOR = {"lin_err[m/s]": 0.05, "yaw_err[rad/s]": 0.05, "air_t[s]": 0.02, "stride[cm]": 1.0, "power[W]": 1.0}
++
+ 
+ # =============================================================================
+ # Aggregation + printing
+@@ -596,6 +695,27 @@
+         print("  ".join(fmt(c, r[c]) for c in cols))
+ 
+ 
++def print_mirror_pairs(stats, grid, cmd_cols):
++    """[P2.3] For each pair of bins that are mirror images, the metrics of MIRROR_PAIR_METRICS side by side and their
++    relative difference |A - B| / max(mean(A, B), floor). Large differences = left and right are treated differently."""
++    flip = torch.ones(grid.shape[1])
++    flip[1:3] = -1.0                                   # (vx, vy, wz[, dh]) -> (vx, -vy, -wz[, dh])
++    rows = []
++    for a in range(len(grid)):
++        for b in range(a + 1, len(grid)):
++            if (grid[b] - grid[a] * flip).abs().max() < 1e-6 and (grid[a] - grid[b]).abs().max() > 1e-6:
++                row = {"A": " ".join(f"{x:+.2f}" for x in grid[a].tolist()),
++                       "B": " ".join(f"{x:+.2f}" for x in grid[b].tolist())}
++                for name in MIRROR_PAIR_METRICS:
++                    va, vb = stats[name][0][a], stats[name][0][b]
++                    rel = abs(va - vb) / max(0.5 * abs(va + vb), MIRROR_PAIR_FLOOR.get(name, 1e-9))
++                    row[name] = f"{va:.3g} / {vb:.3g} ({100 * rel:.0f}%)" if np.isfinite(rel) else "n/a"
++                rows.append(row)
++    if rows:
++        title = f"Mirror-pair check: A / B (|A-B| / max(mean, floor)), commands as {' '.join(cmd_cols)}"
++        print_table(rows, title)
++
++
+ def report(rec, bin_id, grid, ood, dt, title, csv_path):
+     stats, table_cols = compute_stats(rec, bin_id, len(grid), dt)
+     header = bin_header(rec, bin_id, grid, ood)
+@@ -612,6 +732,7 @@
+             rows.append(row)
+         print_table(rows, tname)
+     print("(* = command outside the training command range; n/a = not defined or no valid data)")
++    print_mirror_pairs(stats, grid, cmd_cols)  # [P2.3]
+ 
+     # Same numbers as a CSV (mean and std in separate numeric columns) for plots / comparisons.
+     with open(csv_path, "w", newline="") as f:
+diff -ruN a/go2_sim_suite.py b/go2_sim_suite.py
+--- a/go2_sim_suite.py	2026-11-03 22:03:12.628624436 +0900
++++ b/go2_sim_suite.py	2026-11-03 22:03:12.630182477 +0900
+@@ -27,6 +27,8 @@
+     trip:TEXT   a safety trip whose message contains TEXT ended the run in damping
+     event:TEXT  an event containing TEXT happened (e.g. "L1+Y")
+ Writes out/suite_<date>/summary.md and summary.csv; the logs stay in --log-dir (logs/deploy).
++[P2] The summary also has a gait column: swing time air_t [s] / diagonal sync [%] of each moving profile segment
++(go2_analyze.gait_pattern), so a stress case that breaks the trot shows even when the run passes.
+ Run it alone on the machine: the simulator and the deploy loop must both keep real time.
+ """
+ 
+@@ -143,6 +145,9 @@
+             out.setdefault("tracking", []).append(f"{key} {m.get(key + '_meas', float('nan')):+.2f}/{w.cmd[0 if key == 'vx' else 1]:+.2f}")
+         elif w.cmd is not None and abs(w.cmd[2]) >= 0.1 and m:
+             out.setdefault("tracking", []).append(f"wz {m.get('wz_meas', float('nan')):+.2f}/{w.cmd[2]:+.2f}")
++        if w.cmd is not None and np.linalg.norm(w.cmd[:3]) >= 0.1 and m:  # [P2] swing time / diagonal sync per segment
++            out.setdefault("gait", []).append(f"{m.get('air_t[s]', float('nan')):.2f}/"
++                                              f"{m.get('diag_sync[%]', float('nan')):.0f}")
+     ms = [m for m in result["metrics"].values() if m]
+     out["tilt_max"] = max((m.get("tilt_max[deg]", 0.0) for m in ms), default=float("nan"))
+     out["tau_peak"] = max((m.get("tau_peak[%lim]", 0.0) for m in ms), default=float("nan"))
+@@ -281,6 +286,7 @@
+                 rows.append({"case": c.name, "suite": c.suite, "run": rep + 1, "expect": c.expect,
+                              "result": "ok" if ok else "NOT OK", "why": why,
+                              "tracking": " ".join(info.get("tracking", [])),
++                             "gait_air_t_s/diag_sync_pct": " ".join(info.get("gait", [])),  # [P2]
+                              "tilt_max_deg": f"{info.get('tilt_max', float('nan')):.0f}",
+                              "tau_peak_pct": f"{info.get('tau_peak', float('nan')):.0f}",
+                              "loop_p99_ms": f"{info.get('loop_p99', float('nan')):.1f}",
+@@ -297,13 +303,15 @@
+     with open(os.path.join(args.out, "summary.md"), "w") as f:
+         f.write(f"# Simulation suite, {time.strftime('%Y-%m-%d %H:%M')}\n\npolicy `{args.policy}`, scene "
+                 f"`{os.path.basename(args.scene)}`, physics {1000 * args.dt:g} ms, {args.repeat} runs per case. "
+-                "Tracking = measured / commanded velocity per profile segment; loop and state age while the robot is "
++                "Tracking = measured / commanded velocity per profile segment; gait = air_t [s] / diag_sync [%] per "
++                "moving segment (go2_analyze.py, estimated contacts); loop and state age while the robot is "
+                 "driven (damping left out)\n\n")
+-        f.write("| case | run | expect | result | why | tracking (measured/command) | tilt max [deg] | "
+-                "torque peak [%] | loop p99 [ms] | state age max [ms] |\n|" + " --- |" * 10 + "\n")
++        f.write("| case | run | expect | result | why | tracking (measured/command) | gait (air_t/diag_sync) | "
++                "tilt max [deg] | torque peak [%] | loop p99 [ms] | state age max [ms] |\n|" + " --- |" * 11 + "\n")
+         for r in rows:
+             f.write(f"| {r['case']} | {r['run']} | {r['expect']} | {r['result']} | {r['why']} | {r['tracking']} | "
+-                    f"{r['tilt_max_deg']} | {r['tau_peak_pct']} | {r['loop_p99_ms']} | {r['state_age_max_ms']} |\n")
++                    f"{r['gait_air_t_s/diag_sync_pct']} | {r['tilt_max_deg']} | {r['tau_peak_pct']} | "
++                    f"{r['loop_p99_ms']} | {r['state_age_max_ms']} |\n")
+     bad = [r for r in rows if r["result"] != "ok"]
+     print(f"\n{len(rows) - len(bad)}/{len(rows)} runs as expected. Summary: {os.path.join(args.out, 'summary.md')}")
+     return 1 if bad else 0
+diff -ruN a/go2_symmetry.py b/go2_symmetry.py
+--- a/go2_symmetry.py	1970-01-01 09:00:00.000000000 +0900
++++ b/go2_symmetry.py	2026-11-03 22:03:12.635411265 +0900
+@@ -0,0 +1,176 @@
++"""
++go2_symmetry.py - [P2.3] Left-right mirror of the Go2 observation and action, for rsl_rl's symmetry extension.
++
++rsl-rl-lib 5.5.1 (rsl_rl/extensions/symmetry.py) calls
++    compute_symmetric_states(env=env, obs=TensorDict [B] or None, actions=Tensor [B, 12] or None)
++and expects [originals; mirrored] back (batch 2B, originals first). go2_train.py --symmetry puts
++"go2_symmetry:compute_symmetric_states" in train_cfg["algorithm"]["symmetry_cfg"]; go2_metrics.py uses the same mirror
++for its sym_err metric. Copy this file next to go2_env.py (rsl_rl imports it by name, also when a run is loaded by
++go2_eval.py, go2_metrics.py, go2_export.py...).
++
++The mirror is the reflection through the robot's sagittal (x-z) plane, y -> -y:
++    legs                        FL <-> FR, RL <-> RR
++    hip (abduction, x axis)     angle, velocity, action change sign; thigh and calf (y axis) do not
++    base angular velocity       a pseudovector: (wx, wy, wz) -> (-wx, wy, -wz)
++    projected gravity           a vector: (gx, gy, gz) -> (gx, -gy, gz)
++    commands                    (vx, vy, wz[, dh]) -> (vx, -vy, -wz[, dh])
++    [P2.4] gait clock           sin and cos per foot: FL <-> FR, RL <-> RR. For the trot schedule this is the same trot
++                                half a period later, a state the clock produces too.
++Every reward in go2_env.py is unchanged by the mirror (sums over feet and joints of mirrored quantities), which the
++augmentation needs: mirrored samples reuse the advantages and returns of their originals.
++Front-back is NOT a symmetry of the Go2 (all knees point backward, front and rear thighs have different default angles
++and limits), unlike ANYmal in Isaac Lab's example: only left-right is used.
++
++    python go2_symmetry.py          # checks: mirror twice = identity, and a mirrored Genesis rollout stays mirrored
++"""
++
++import torch
++
++SWAP = {"FL": "FR", "FR": "FL", "RL": "RR", "RR": "RL"}
++
++
++def joint_mirror(joint_names):
++    """(perm, sign) for a vector in joint order: mirrored[i] = sign[i] * x[perm[i]]."""
++    names = list(joint_names)
++    perm, sign = [], []
++    for name in names:
++        leg, kind = name.split("_")[:2]
++        perm.append(names.index(SWAP[leg] + name[len(leg):]))
++        sign.append(-1.0 if kind == "hip" else 1.0)
++    return perm, sign
++
++
++def _spec(env, key, build):
++    """Mirror (perm, sign) tensors on the env's device, built once per env."""
++    cache = env.__dict__.setdefault("_mirror_cache", {})
++    if key not in cache:
++        perm, sign = build()
++        cache[key] = (torch.tensor(perm, dtype=torch.long, device=env.device),
++                      torch.tensor(sign, dtype=torch.float, device=env.device))
++    return cache[key]
++
++
++def _obs_layout(env):
++    """(perm, sign) of the policy observation, block by block as Go2Env._update_observation() builds it."""
++    joint_perm, joint_sign = joint_mirror(env.env_cfg["joint_names"])
++    perm, sign = [], []
++
++    def block(p, s):
++        start = len(perm)
++        perm.extend(start + i for i in p)
++        sign.extend(s)
++
++    block([0, 1, 2], [-1.0, 1.0, -1.0])  # base angular velocity
++    block([0, 1, 2], [1.0, -1.0, 1.0])  # projected gravity
++    block(list(range(env.num_commands)), [1.0, -1.0, -1.0, 1.0][: env.num_commands])  # vx, vy, wz[, dh]
++    for _ in range(3):  # joint positions, joint velocities, last actions
++        block(joint_perm, joint_sign)
++    if getattr(env, "num_clock_obs", 0):  # [P2.4] sin of each foot, then cos of each foot
++        feet = [name.split("_")[0] for name in env.foot_links]
++        foot_perm = [feet.index(SWAP[f]) for f in feet]
++        block(foot_perm, [1.0] * len(feet))
++        block(foot_perm, [1.0] * len(feet))
++    return perm, sign
++
++
++def mirror_obs(env, obs):
++    """Mirror a policy observation tensor [..., D]."""
++    perm, sign = _spec(env, "obs", lambda: _obs_layout(env))
++    if obs.shape[-1] != perm.numel():
++        raise ValueError(f"go2_symmetry: observation of size {obs.shape[-1]}, the mirror knows the {perm.numel()} "
++                         f"entries of Go2Env's policy observation. A new observation term needs its mirror in "
++                         f"_obs_layout().")
++    return obs[..., perm] * sign
++
++
++def mirror_actions(env, actions):
++    """Mirror an action tensor [..., 12] (policy joint order)."""
++    perm, sign = _spec(env, "act", lambda: joint_mirror(env.env_cfg["joint_names"]))
++    return actions[..., perm] * sign
++
++
++@torch.no_grad()
++def compute_symmetric_states(env, obs=None, actions=None):
++    """rsl_rl symmetry function: originals followed by their left-right mirror (2 x the batch)."""
++    obs_aug = None
++    if obs is not None:
++        batch = obs.batch_size[0]
++        obs_aug = obs.repeat(2)
++        for key in obs.keys():  # every observation group ("policy"; the critic uses it too)
++            obs_aug[key][batch:] = mirror_obs(env, obs[key])
++    actions_aug = None
++    if actions is not None:
++        actions_aug = torch.cat((actions, mirror_actions(env, actions)), dim=0)
++    return obs_aug, actions_aug
++
++
++# ---------------------------------------------------------------------------------------------------------------------
++# Checks
++# ---------------------------------------------------------------------------------------------------------------------
++def _check(steps=50, seed=0, gait_clock=False):
++    """1) mirror twice = identity. 2) Physics: env 1 starts in the mirror of env 0's state (the default pose, which is
++    its own mirror) and receives the mirrored command and mirrored actions; its observation must stay the mirror of
++    env 0's. A sign error in the mirror shows up as a large difference in that block from the first steps."""
++    import genesis as gs
++    from tensordict import TensorDict
++
++    import go2_train
++    from go2_env import Go2Env, nominal_world
++
++    gs.init(backend=gs.cpu, logging_level="warning", seed=seed)
++    env_cfg, obs_cfg, reward_cfg, command_cfg = go2_train.get_cfgs()
++    nominal_world(env_cfg, obs_cfg)
++    reward_cfg["reward_scales"] = {}
++    env_cfg.update(episode_length_s=1e3, resampling_time_s=1e3)
++    if gait_clock:
++        env_cfg["gait_clock"] = {"frequency": 2.0, "duty": 0.5}
++
++    command = torch.tensor([0.5, 0.3, 0.4])
++
++    class PinnedEnv(Go2Env):
++        def _resample_commands(self, envs_idx):
++            self.commands[0] = command.to(self.device)
++            self.commands[1] = command.to(self.device) * torch.tensor([1.0, -1.0, -1.0], device=self.device)
++
++    env = PinnedEnv(2, env_cfg, obs_cfg, reward_cfg, command_cfg)
++    obs = env.reset()["policy"]
++    if env.gait_clock:  # the mirror of a trot clock is the same clock half a period later
++        env.gait_phase[1] = 0.5
++        env._update_gait_targets()
++
++    x = torch.randn(64, obs.shape[-1], device=env.device)
++    a = torch.randn(64, env.num_actions, device=env.device)
++    aug_obs, aug_act = compute_symmetric_states(env, TensorDict({"policy": x}, batch_size=[64]), a)
++    twice = (mirror_obs(env, aug_obs["policy"][64:]) - x).abs().max().item()
++    twice = max(twice, (mirror_actions(env, aug_act[64:]) - a).abs().max().item())
++    print(f"mirror(mirror(x)) - x: {twice:.1e} (must be 0)")
++
++    blocks = [("ang_vel", 3), ("gravity", 3), ("commands", env.num_commands), ("dof_pos", 12), ("dof_vel", 12),
++              ("actions", 12)] + ([("clock", env.num_clock_obs)] if env.num_clock_obs else [])
++    worst = {name: 0.0 for name, _ in blocks}
++    gen = torch.Generator(device=env.device).manual_seed(seed)
++    action = torch.zeros(env.num_actions, device=env.device)
++    for _ in range(steps):  # smooth random actions, so the robot stays up for the whole check
++        action = 0.8 * action + 0.2 * torch.randn(env.num_actions, generator=gen, device=env.device)
++        actions = torch.stack((action, mirror_actions(env, action)))
++        obs = env.step(actions)[0]["policy"]
++        diff = (obs[1] - mirror_obs(env, obs[0])).abs()
++        start = 0
++        for name, size in blocks:
++            worst[name] = max(worst[name], diff[start:start + size].max().item())
++            start += size
++    print(f"mirrored rollout, {steps} steps: max |obs_1 - mirror(obs_0)| per block")
++    for name, value in worst.items():
++        print(f"    {name:9s} {value:.1e}")
++    print("Small values (contact solver round-off, ~1e-3 or below) = the mirror matches the physics. A block at the "
++          "size of the signal itself (~0.1-1) = a wrong sign or permutation in that block.")
++
++
++if __name__ == "__main__":
++    import argparse
++
++    p = argparse.ArgumentParser()
++    p.add_argument("--steps", type=int, default=50)
++    p.add_argument("--clock", action="store_true", help="also check the [P2.4] gait-clock entries")
++    args = p.parse_args()
++    _check(args.steps, gait_clock=args.clock)
+diff -ruN a/go2_train.py b/go2_train.py
+--- a/go2_train.py	2026-11-03 22:03:12.599868310 +0900
++++ b/go2_train.py	2026-11-03 22:03:12.601549144 +0900
+@@ -1,4 +1,5 @@
+ import argparse
++import ast
+ import os
+ import pickle
+ import shutil
+@@ -19,6 +20,7 @@
+ 
+ from go2_env import (Go2Env, FOOT_LINKS, GO2_TORQUE_LIMITS, GO2_DOF_VEL_LIMITS, GO2_JOINT_FRICTION, GO2_JOINT_DAMPING,
+                      GO2_MJCF_LOWER_LEG, obs_noise_scales)
++from go2_env import WTW_TROT_OFFSETS, num_clock_obs  # [P2.4]
+ from go2_commands import LIN_DEADZONE, ANG_DEADZONE  # [P1.1] same deadzone as at deployment
+ 
+ import subprocess, json, sys, torch
+@@ -201,6 +203,15 @@
+         # [P1.1] feet air time (legged_gym): contact threshold [N] and target air time [s]
+         "contact_force_threshold": 1.0,
+         "feet_air_time_target": 0.3,  # [fix] 0.5 is the ANYmal value, out of the Go2's reach at speed (P2 guide §5.1)
++        "feet_air_time_max": None,  # [P2.1] optional cap [s] on the air time paid at touchdown (None = uncapped)
++        # [P2.4] --gait spot: Spot GaitReward (std [s^2], max_err [s], velocity_threshold [m/s]), air_time_variance clip
++        "gait_std": 0.1,
++        "gait_max_err": 0.2,
++        "gait_velocity_threshold": 0.5,
++        "air_time_variance_clip": 0.5,
++        # [P2.4] --gait wtw: walk-these-ways contact-schedule kernels (gait_force_sigma [N^2], gait_vel_sigma [m^2/s^2])
++        "gait_force_sigma": 100.0,
++        "gait_vel_sigma": 10.0,
+         # [P1.1] at zero command and base speed < threshold, similar_to_default is multiplied by stand_still_scale
+         # (Isaac Lab Spot: stand_still_scale 5.0, velocity_threshold 0.5 m/s)
+         "stand_still_scale": 5.0,
+@@ -261,6 +272,76 @@
+     return env_cfg, obs_cfg, reward_cfg, command_cfg
+ 
+ 
++# [P2] Values the P2 switches use. P1 ([fix]) raised tracking from 1.0 + 0.5 to 1.5 + 0.75, so the P2 weights below are
++# 1.5x those of the first P2 version: same strength relative to the tracking reward (TEST_AND_TINKER_P2.md 3.5).
++MIRROR_LOSS_COEF = 1.0  # --symmetry loss/both (no published value; Mittal et al. 2024: too high hurts training)
++ENERGY_WEIGHT = 1.5e-3  # --energy: x |tau qdot| [W]; at 75 W, 5 % of the 2.25/s tracking reward (unitree_rl_lab 2e-5)
++SPOT_GAIT = {"gait": 1.5, "air_time_variance": -1.0}  # Spot: 10 next to tracking 5 + 5; variance: unitree_rl_lab Go2
++WTW_GAIT = {"contact_schedule_force": -3.0, "contact_schedule_vel": -3.0}  # WTW: +4 each next to tracking 1 + 0.5
++WTW_CLOCK = {"frequency": 2.0, "duty": 0.5, "kappa": 0.07, "offsets": dict(WTW_TROT_OFFSETS)}  # 2 Hz -> 0.25 s swings
++
++
++def apply_overrides(cfgs, items):
++    """[P2] --set group.key.subkey=value on the config dicts (value parsed as a Python literal, else kept as text).
++    Groups: env, obs, reward, command, train. value None deletes the key (e.g. a reward term)."""
++    for item in items:
++        path, sep, text = item.partition("=")
++        keys = path.split(".")
++        if not sep or len(keys) < 2 or keys[0] not in cfgs:
++            raise SystemExit(f"--set {item}: expected GROUP.KEY=VALUE with GROUP in {', '.join(cfgs)}")
++        node = cfgs[keys[0]]
++        for key in keys[1:-1]:
++            if not isinstance(node.get(key), dict):
++                if node.get(key) is not None:
++                    raise SystemExit(f"--set {item}: {key} is not a dictionary")
++                node[key] = {}  # e.g. env.gait_clock.frequency=2.5 without --gait wtw creates the entry
++            node = node[key]
++        try:
++            value = ast.literal_eval(text)
++        except (ValueError, SyntaxError):
++            value = text
++        if value is None and keys[0] == "reward" and keys[-2] == "reward_scales":
++            node.pop(keys[-1], None)  # remove the term (also fine when it was not enabled)
++        else:
++            node[keys[-1]] = value
++        print(f"--set {path} = {value!r}")
++    sym = cfgs["train"]["algorithm"].get("symmetry_cfg")
++    if sym is not None and "data_augmentation_func" not in sym:
++        raise SystemExit("--set train.algorithm.symmetry_cfg...: give --symmetry (aug / loss / both / log) as well")
++
++
++def p2_summary(env_cfg, reward_cfg, command_cfg, train_cfg):
++    """[P2] One line per gait-quality part, printed at start (the full configuration is in cfgs.pkl)."""
++    scales = reward_cfg["reward_scales"]
++    sym = train_cfg["algorithm"].get("symmetry_cfg")
++    sym_mode = "off" if not sym else "+".join(
++        name for name, on in (("aug", sym["use_data_augmentation"]), ("loss", sym["use_mirror_loss"])) if on
++    ) or "log only"
++    gait = [name for name in ("gait", "air_time_variance", "contact_schedule_force", "contact_schedule_vel")
++            if name in scales]
++    clock = env_cfg.get("gait_clock")
++    dr = env_cfg.get("domain_rand", {})
++    joint_dr = {k: dr[k] for k in ("joint_friction_range", "joint_damping_range") if k in dr}
++    lines = [
++        f"P2.0 [S2R] joints {env_cfg.get('joint_friction', 0.0)} Nm / {env_cfg.get('joint_damping', 0.0)} Nm s/rad"
++        + (f" {joint_dr}" if joint_dr else "") + f", feet torsion {env_cfg.get('foot_torsional_friction')} rolling "
++        f"{env_cfg.get('foot_rolling_friction')}, cone {env_cfg.get('friction_cone')} impratio "
++        f"{env_cfg.get('impratio')}, MJCF lower legs {bool(env_cfg.get('lower_leg_inertial'))}, contact friction "
++        f"{dr.get('friction_range')}",
++        f"P2.1 feet_air_time weight {scales.get('feet_air_time', 0.0)}, target {reward_cfg['feet_air_time_target']} s,"
++        f" cap {reward_cfg.get('feet_air_time_max')}",
++        f"P2.2 foot_clearance weight {scales.get('foot_clearance', 0.0)}, clearance target "
++        f"{reward_cfg['feet_height_target']} m, std {reward_cfg.get('foot_clearance_std')}",
++        f"P2.3 symmetry {sym_mode}" + (f", mirror loss coef {sym['mirror_loss_coeff']}" if sym else ""),
++        f"P2.4 gait terms {gait or 'none'}" + (f", clock {clock}" if clock else ""),
++        f"P2.5 energy weight {scales.get('energy', 0.0)}",
++        f"penalty curriculum: negative terms x {reward_cfg.get('penalty_scale_init', 1.0)} -> 1 over "
++        f"{reward_cfg.get('penalty_ramp_steps', 0) / train_cfg['num_steps_per_env']:g} iterations (P2.4 / P2.5 "
++        f"penalties included)",
++    ]
++    print("\n".join(["--- gait quality (P2) ---"] + lines))
++
++
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument(
+@@ -285,7 +366,30 @@
+     parser.add_argument("--rnn-hidden", type=int, default=256, help="RNN hidden size (rsl_rl's default: 256)")
+     parser.add_argument("--steps-per-env", type=int, default=None,
+                         help="rollout length per env and iteration (default: 24 for an MLP, 48 with --rnn)")
++    # [P2] gait quality. P1 now trains with the air-time target 0.3 s and the foot-clearance reward ([fix], [S2R]):
++    # --air-time and --clearance only change their targets (sweeps); --symmetry, --gait, --energy add what P1 lacks.
++    # TEST_AND_TINKER_P2.md has one command line per part.
++    parser.add_argument("--air-time", type=float, default=None, metavar="T",
++                        help="[P2.1] feet air-time target [s] (P1 default: 0.3)")
++    parser.add_argument("--air-time-max", type=float, default=None, metavar="C",
++                        help="[P2.1] cap [s] on the air time paid at touchdown: the swing duration the term prefers "
++                             "(P1: uncapped, so it always prefers fewer, longer steps)")
++    parser.add_argument("--clearance", type=float, default=None, metavar="H",
++                        help="[P2.2] foot clearance target [m] of the foot_clearance reward (P1 default: 0.075)")
++    parser.add_argument("--symmetry", nargs="?", const="aug", default=None, choices=("aug", "loss", "both", "log"),
++                        help="[P2.3] rsl_rl symmetry: data augmentation (default when given), mirror loss, both, or "
++                             "log (Loss/symmetry is logged, training unchanged)")
++    parser.add_argument("--gait", choices=("spot", "wtw"), default=None,
++                        help="[P2.4] gait pattern: spot (GaitReward + air-time variance) or wtw (contact schedule + "
++                             "clock inputs; drops feet_air_time)")
++    parser.add_argument("--energy", type=float, nargs="?", const=ENERGY_WEIGHT, default=None, metavar="W",
++                        help=f"[P2.5] mechanical power penalty -W * sum|tau qdot| (when given alone: {ENERGY_WEIGHT})")
++    parser.add_argument("--set", nargs="+", default=[], metavar="GROUP.KEY=VALUE",
++                        help="[P2] override any config entry last, e.g. reward.reward_scales.foot_clearance=0.5 "
++                             "env.joint_friction=0.3 (groups: env, obs, reward, command, train)")
+     args = parser.parse_args()
++    if args.rnn and args.symmetry:  # [P2.3] rsl_rl 5.5.1 PPO raises "not supported for recurrent policies"
++        parser.error("--symmetry is not supported by rsl_rl for recurrent policies: drop --rnn or --symmetry")
+     if args.rnn and (args.lcp > 0 or args.caps_t > 0 or args.caps_s > 0):
+         # go2_smooth_ppo.py evaluates the policy on flat mini-batches of single observations; a recurrent version
+         # would need rsl_rl's padded-sequence mini-batches with their hidden states
+@@ -314,6 +418,45 @@
+     # [fix] 400 iterations. [S2R] bug fix: this line was inside the if above, so MLP runs trained with it never had
+     # the ramp; penalty_scale_init alone does nothing without it.
+     reward_cfg["penalty_ramp_steps"] = 400 * train_cfg["num_steps_per_env"]
++    # [P2.1] longer steps: the air-time target (P1 default 0.3 s; sweep it here)
++    if args.air_time is not None:
++        reward_cfg["feet_air_time_target"] = args.air_time
++    if args.air_time_max is not None:
++        reward_cfg["feet_air_time_max"] = args.air_time_max
++    # [P2.2] foot clearance: target of the foot_clearance reward (P1 default 0.075 m, weight 1.0)
++    if args.clearance is not None:
++        reward_cfg["feet_height_target"] = args.clearance
++    # [P2.3] symmetry: rsl_rl's extension with the Go2 left-right mirror (go2_symmetry.py)
++    if args.symmetry:
++        train_cfg["algorithm"]["symmetry_cfg"] = {
++            "data_augmentation_func": "go2_symmetry:compute_symmetric_states",
++            "use_data_augmentation": args.symmetry in ("aug", "both"),
++            "use_mirror_loss": args.symmetry in ("loss", "both"),
++            "mirror_loss_coeff": MIRROR_LOSS_COEF if args.symmetry in ("loss", "both") else 0.0,
++        }
++    # [P2.4] gait pattern (only if the gait is still irregular after P2.1-P2.3)
++    if args.gait == "spot":
++        reward_cfg["reward_scales"].update(SPOT_GAIT)
++    elif args.gait == "wtw":
++        env_cfg["gait_clock"] = {**WTW_CLOCK, "offsets": dict(WTW_CLOCK["offsets"])}
++        reward_cfg["reward_scales"].update(WTW_GAIT)
++        # walk-these-ways has no air-time term: the clock sets the swing time (0.25 s at 2 Hz), and P1's 0.3 s target
++        # would make every scheduled step cost reward. Put it back with --set reward.reward_scales.feet_air_time=1.0
++        # (and a target below the clock's swing, --air-time 0.2)
++        reward_cfg["reward_scales"].pop("feet_air_time", None)
++    # [P2.5] energy: mechanical power penalty (reported as power and CoT by go2_metrics.py)
++    if args.energy is not None:
++        reward_cfg["reward_scales"]["energy"] = -abs(args.energy)
++    # [P2] --set overrides come last, so they win over every flag above
++    apply_overrides({"env": env_cfg, "obs": obs_cfg, "reward": reward_cfg, "command": command_cfg, "train": train_cfg},
++                    args.set)
++    clock = env_cfg.get("gait_clock")
++    if clock and reward_cfg["reward_scales"].get("feet_air_time", 0.0) > 0:
++        swing = (1.0 - clock.get("duty", 0.5)) / clock.get("frequency", 2.0)
++        if reward_cfg["feet_air_time_target"] > swing:
++            print(f"WARNING: the clock asks for {swing:.2f} s swings but feet_air_time pays only above "
++                  f"{reward_cfg['feet_air_time_target']} s: lower --air-time, or remove the term with "
++                  f"--set reward.reward_scales.feet_air_time=None (walk-these-ways does not use it)")
+     if args.lcp > 0 or args.caps_t > 0 or args.caps_s > 0:  # [P1.4]
+         train_cfg["algorithm"].update(
+             {
+@@ -322,10 +465,14 @@
+                 "caps_temporal_coef": args.caps_t,
+                 "caps_spatial_coef": args.caps_s,
+                 # CAPS spatial noise: the observation-noise scales of P1.2 (0 on commands and last actions)
+-                "caps_sigma": obs_noise_scales(obs_cfg, env_cfg["num_actions"], command_cfg["num_commands"]),
++                # [P2.4] ... and on the gait clock
++                "caps_sigma": obs_noise_scales(obs_cfg, env_cfg["num_actions"], command_cfg["num_commands"],
++                                               num_clock_obs(env_cfg)),
+             }
+         )
+ 
++    p2_summary(env_cfg, reward_cfg, command_cfg, train_cfg)  # [P2]
++
+     if os.path.exists(log_dir):
+         shutil.rmtree(log_dir)
+     os.makedirs(log_dir, exist_ok=True)
+diff -ruN a/test_go2_deploy.py b/test_go2_deploy.py
+--- a/test_go2_deploy.py	2026-11-03 22:03:12.632238566 +0900
++++ b/test_go2_deploy.py	2026-11-03 22:03:12.633858627 +0900
+@@ -1,7 +1,7 @@
+ """
+ test_go2_deploy.py - [S2R] Checks of the deploy-side logic that need neither a robot nor a simulator.
+ 
+-    python test_go2_deploy.py                         # state machine, inputs, kinematics, log format
++    python test_go2_deploy.py                         # state machine, inputs, kinematics, log format, gait clock
+     python test_go2_deploy.py --policy logs/<exp>/exported   # the same on your exported policy (else a synthetic cfg)
+     python test_go2_deploy.py --dds                   # + the deploy loop's error path over DDS (loopback, domain 99)
+ 
+@@ -225,6 +225,59 @@
+     ok(f"exported policy: {p.n_obs} observations, deterministic after reset(), inference {1e3 * p.last_infer_s:.2f} ms")
+ 
+ 
++def test_gait_clock():
++    """[P2.4] The robot-side gait clock of --gait wtw exports, and go2_analyze.py's gait columns."""
++    from types import SimpleNamespace
++
++    import go2_analyze as A
++
++    clock = {"feet": ["FL", "FR", "RL", "RR"], "offsets": [0.5, 0.0, 0.0, 0.5], "frequency": 2.0, "duty": 0.5}
++    cfg = dict(synthetic_cfg(), gait_clock=clock)
++    p = Policy(deploy_cfg=cfg)
++    assert p.n_obs == 45 + 8
++    q0 = np.asarray(cfg["default_joint_angles"])
++    obs, ts = [], []
++    for k in range(30):
++        p.step(np.zeros(3), LEVEL, q0, np.zeros(12), np.zeros(3))
++        obs.append(p.last_obs)
++        ts.append(k * cfg["policy_dt"])
++    o = obs[0][-8:]  # phase 0: FL, RR half a cycle on (swing starts), FR, RL at the start of stance
++    assert np.allclose(o[:4], 0.0, atol=1e-6) and np.allclose(o[4:], [-1, 1, 1, -1], atol=1e-6), o
++    assert np.isclose(p.phase, (30 * 0.02 * 2.0) % 1.0) and p.steps_since_reset == 30
++    p.reset()
++    assert p.phase == 0.0 and p.steps_since_reset == 0
++    ok("gait clock: 53 observations, phase 0 at reset, + f x dt per policy step")
++
++    b = Bench(None)
++    b.policy = b.fsm.policy = Policy(deploy_cfg=cfg)
++    b.policy_mode()
++    b.run(0.5)
++    assert b.policy.last_obs.shape == (53,) and b.policy.steps_since_reset > 0
++    b.run(0.5, ("L1", "R2"))
++    b.run(3.0)
++    b.run(1.0, ("L1", "A"))
++    assert b.policy.steps_since_reset <= 26, b.policy.steps_since_reset  # restarted at the second policy entry
++    ok("state machine: the clock restarts at every policy start")
++
++    # go2_analyze.clock_stance: the stance the clock asks for, from the logged observations, between policy steps
++    run = SimpleNamespace(p={"t": np.array(ts), "obs": np.array(obs)})
++    tg = np.arange(0.0, 0.58, 1.0 / A.GRID_HZ)
++    want = A.clock_stance(run, tg, clock)
++    raw = np.mod(tg[:, None] * 2.0 + np.array([0.0, 0.5, 0.5, 0.0]), 1.0)  # legs FR, FL, RR, RL
++    assert np.mean(want == (raw < 0.5)) > 0.98, np.mean(want == (raw < 0.5))
++    ok("go2_analyze clock_stance: the clock's stance recovered from the logged observations")
++
++    # go2_analyze.gait_pattern on a synthetic 2 Hz trot (legs FR, FL, RR, RL): FR-RL together, FL-RR half a cycle later
++    t = np.arange(0.0, 4.0, 1.0 / A.GRID_HZ)
++    st = np.mod(t[:, None] * 2.0 + np.array([0.0, 0.5, 0.5, 0.0]), 1.0) < 0.5
++    m = A.gait_pattern(st, np.array([0.5, 0.0, 0.0]))
++    assert abs(m["air_t[s]"] - 0.25) < 0.01 and m["diag_sync[%]"] > 99.0 and m["air_asym[%]"] < 1.0, m
++    assert m["air_cv[%]"] < 2.0, m
++    pace = np.mod(t[:, None] * 2.0 + np.array([0.0, 0.5, 0.0, 0.5]), 1.0) < 0.5  # FR-RR together: a pace
++    assert A.gait_pattern(pace, np.array([0.5, 0.0, 0.0]))["diag_sync[%]"] < 1.0
++    ok("go2_analyze gait_pattern: trot -> air_t 0.25 s, diag_sync 100 %, pace -> 0 %")
++
++
+ def test_kinematics():
+     rng = np.random.default_rng(1)
+     q = np.tile([0.0, 0.8, -1.5], 4) + 0.2 * rng.standard_normal((5, 12))
+@@ -348,6 +401,7 @@
+     test_profile(args.policy)
+     test_joint_test(args.policy)
+     test_policy_observation(args.policy)
++    test_gait_clock()  # [P2.4]
+     test_kinematics()
+     test_sim_models()
+     test_log()

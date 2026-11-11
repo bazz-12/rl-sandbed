@@ -425,6 +425,10 @@ def print_alignment(policy, sdk_idx, args):
           f"{json.dumps(c['obs_scales'])} | commands scale {c['commands_scale']}")
     print(f"  command ranges {json.dumps(c['command_ranges'])} | deadzones lin {c['lin_deadzone']} ang "
           f"{c['ang_deadzone']}")
+    if c.get("gait_clock"):  # [P2.4] the policy's observation ends with this clock (go2_fsm.Policy runs it)
+        g = c["gait_clock"]
+        print(f"  gait clock {g['frequency']} Hz, duty {g['duty']}, offsets "
+              + ", ".join(f"{f} {o:g}" for f, o in zip(g["feet"], g["offsets"])) + " (phase 0 at each policy start)")
     print("  joint -> SDK motor | default [rad]: " + ", ".join(
         f"{n.replace('_joint', '')}->{j} {d:+.2f}" for n, j, d in zip(c["joint_names"], sdk_idx,
                                                                      c["default_joint_angles"])))

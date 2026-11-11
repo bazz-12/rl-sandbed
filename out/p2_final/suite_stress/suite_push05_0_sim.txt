@@ -1,0 +1,32 @@
+1793927066.015619 [1]     python: selected interface "lo" is not multicast-capable: disabling multicast
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.17)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+unitree_mujoco headless: scene_flat.xml, physics 2.0 ms, foot friction 1, push 0.5 m/s every 4 s from 8 s, domain 1 on lo
+[   2.6 s] real-time factor 1.00 | base z 0.108 m | rt/lowcmd 114 Hz
+[   4.6 s] real-time factor 1.00 | base z 0.201 m | rt/lowcmd 500 Hz
+[   6.6 s] real-time factor 1.00 | base z 0.323 m | rt/lowcmd 500 Hz
+[   8.6 s] real-time factor 1.00 | base z 0.326 m | rt/lowcmd 497 Hz
+[sim   10.2 s] push: 0.5 m/s towards 184 deg
+[  10.6 s] real-time factor 1.00 | base z 0.317 m | rt/lowcmd 449 Hz
+[  12.6 s] real-time factor 1.00 | base z 0.312 m | rt/lowcmd 467 Hz
+[sim   14.2 s] push: 0.5 m/s towards 342 deg
+[  14.6 s] real-time factor 1.00 | base z 0.308 m | rt/lowcmd 466 Hz
+[  16.6 s] real-time factor 1.00 | base z 0.309 m | rt/lowcmd 465 Hz
+[sim   18.2 s] push: 0.5 m/s towards 52 deg
+[  18.7 s] real-time factor 1.00 | base z 0.322 m | rt/lowcmd 470 Hz
+[  20.7 s] real-time factor 1.00 | base z 0.313 m | rt/lowcmd 474 Hz
+[sim   22.2 s] push: 0.5 m/s towards 342 deg
+[  22.7 s] real-time factor 1.00 | base z 0.312 m | rt/lowcmd 475 Hz
+[  24.7 s] real-time factor 1.00 | base z 0.322 m | rt/lowcmd 478 Hz
+[sim   26.2 s] push: 0.5 m/s towards 112 deg
+[  26.7 s] real-time factor 1.00 | base z 0.321 m | rt/lowcmd 481 Hz
+[  28.7 s] real-time factor 1.00 | base z 0.277 m | rt/lowcmd 487 Hz
+[sim   30.2 s] push: 0.5 m/s towards 152 deg
+[  30.7 s] real-time factor 1.00 | base z 0.107 m | rt/lowcmd 500 Hz
+[  32.7 s] real-time factor 1.00 | base z 0.107 m | rt/lowcmd 500 Hz
+[sim   34.2 s] push: 0.5 m/s towards 298 deg
+[  34.7 s] real-time factor 1.00 | base z 0.107 m | rt/lowcmd 389 Hz
+[  36.7 s] real-time factor 1.00 | base z 0.106 m | rt/lowcmd 0 Hz
+no rt/lowcmd for 3 s: done
+stopped: 36.6 s simulated, real-time factor 1.000
+ground truth saved to /home/rbuche/projects/sandbed/logs/deploy/mjtruth_suite_push05_0.npz
