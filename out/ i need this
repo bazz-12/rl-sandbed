@@ -1,0 +1,409 @@
+[go2deploy] sandbed on main [!+?⇡]
+❯ python go2_sim_suite.py --policy logs/go2-p17h/exported --um ~/unitree_mujoco --suite gate --rt
+10 cases x 2 runs, about 18 min; scene scene_flat.xml, physics 2 ms; output in /home/rbuche/projects/sandbed/out/suite_20261103_133620
+mjtruth_suite_stand60_mu1_0: ground truth attached to A = mujoco_20261103_133622_suite_stand60_mu1_0
+ok     stand60_mu1      run 1  PASS  [82 s]
+mjtruth_suite_stand60_mu1_1: ground truth attached to A = mujoco_20261103_133744_suite_stand60_mu1_1
+ok     stand60_mu1      run 2  PASS  [82 s]
+mjtruth_suite_slow_mu1_0: ground truth attached to A = mujoco_20261103_133905_suite_slow_mu1_0
+NOT OK slow_mu1         run 1  profile seg 3: lin_err 0.16 m/s > 0.15  [40 s]
+mjtruth_suite_slow_mu1_1: ground truth attached to A = mujoco_20261103_133945_suite_slow_mu1_1
+NOT OK slow_mu1         run 2  profile seg 3: lin_err 0.20 m/s > 0.15  [40 s]
+mjtruth_suite_fwd_back_mu1_0: ground truth attached to A = mujoco_20261103_134025_suite_fwd_back_mu1_0
+ok     fwd_back_mu1     run 1  PASS  [38 s]
+mjtruth_suite_fwd_back_mu1_1: ground truth attached to A = mujoco_20261103_134102_suite_fwd_back_mu1_1
+ok     fwd_back_mu1     run 2  PASS  [38 s]
+mjtruth_suite_lateral_mu1_0: ground truth attached to A = mujoco_20261103_134140_suite_lateral_mu1_0
+ok     lateral_mu1      run 1  PASS  [38 s]
+mjtruth_suite_lateral_mu1_1: ground truth attached to A = mujoco_20261103_134218_suite_lateral_mu1_1
+ok     lateral_mu1      run 2  PASS  [38 s]
+mjtruth_suite_yaw_mu1_0: ground truth attached to A = mujoco_20261103_134255_suite_yaw_mu1_0
+NOT OK yaw_mu1          run 1  profile seg 1: yaw_err 0.31 rad/s > 0.2; profile seg 3: yaw_err 0.37 rad/s > 0.2  [38 s]
+mjtruth_suite_yaw_mu1_1: ground truth attached to A = mujoco_20261103_134333_suite_yaw_mu1_1
+NOT OK yaw_mu1          run 2  profile seg 1: yaw_err 0.31 rad/s > 0.2; profile seg 3: yaw_err 0.37 rad/s > 0.2  [37 s]
+mjtruth_suite_stand60_mu04_0: ground truth attached to A = mujoco_20261103_134410_suite_stand60_mu04_0
+ok     stand60_mu04     run 1  safe  [82 s]
+mjtruth_suite_stand60_mu04_1: ground truth attached to A = mujoco_20261103_134532_suite_stand60_mu04_1
+ok     stand60_mu04     run 2  safe  [82 s]
+mjtruth_suite_slow_mu04_0: ground truth attached to A = mujoco_20261103_134654_suite_slow_mu04_0
+ok     slow_mu04        run 1  safe (tracking: profile seg 3: lin_err 0.15 m/s > 0.15)  [40 s]
+mjtruth_suite_slow_mu04_1: ground truth attached to A = mujoco_20261103_134734_suite_slow_mu04_1
+ok     slow_mu04        run 2  safe (tracking: profile seg 3: lin_err 0.16 m/s > 0.15)  [40 s]
+mjtruth_suite_fwd_back_mu04_0: ground truth attached to A = mujoco_20261103_134813_suite_fwd_back_mu04_0
+ok     fwd_back_mu04    run 1  safe  [38 s]
+mjtruth_suite_fwd_back_mu04_1: ground truth attached to A = mujoco_20261103_134851_suite_fwd_back_mu04_1
+ok     fwd_back_mu04    run 2  safe  [38 s]
+mjtruth_suite_lateral_mu04_0: ground truth attached to A = mujoco_20261103_134929_suite_lateral_mu04_0
+ok     lateral_mu04     run 1  safe  [38 s]
+mjtruth_suite_lateral_mu04_1: ground truth attached to A = mujoco_20261103_135006_suite_lateral_mu04_1
+ok     lateral_mu04     run 2  safe  [38 s]
+mjtruth_suite_yaw_mu04_0: ground truth attached to A = mujoco_20261103_135044_suite_yaw_mu04_0
+ok     yaw_mu04         run 1  safe (tracking: profile seg 1: yaw_err 0.30 rad/s > 0.2; profile seg 3: yaw_err 0.35 rad/s > 0.2)  [38 s]
+mjtruth_suite_yaw_mu04_1: ground truth attached to A = mujoco_20261103_135122_suite_yaw_mu04_1
+ok     yaw_mu04         run 2  safe (tracking: profile seg 1: yaw_err 0.30 rad/s > 0.2; profile seg 3: yaw_err 0.35 rad/s > 0.2)  [38 s]
+
+16/20 runs as expected. Summary: /home/rbuche/projects/sandbed/out/suite_20261103_133620/summary.md
+# Simulation suite, 2026-11-03 13:51
+
+policy `/home/rbuche/projects/sandbed/logs/go2-p17h/exported`, scene `scene_flat.xml`, physics 2 ms, 2 runs per case. Tracking = measured / commanded velocity per profile segment; loop and state age while the robot is driven (damping left out)
+
+| case | run | expect | result | why | tracking (measured/command) | tilt max [deg] | torque peak [%] | loop p99 [ms] | state age max [ms] |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| stand60_mu1 | 1 | pass | ok | PASS |  | 3 | 14 | 2.1 | 14 |
+| stand60_mu1 | 2 | pass | ok | PASS |  | 3 | 14 | 2.2 | 14 |
+| slow_mu1 | 1 | pass | NOT OK | profile seg 3: lin_err 0.16 m/s > 0.15 | vx +0.12/+0.25 vx -0.10/-0.25 | 3 | 30 | 2.1 | 13 |
+| slow_mu1 | 2 | pass | NOT OK | profile seg 3: lin_err 0.20 m/s > 0.15 | vx +0.12/+0.25 vx -0.06/-0.25 | 3 | 31 | 2.2 | 11 |
+| fwd_back_mu1 | 1 | pass | ok | PASS | vx +0.38/+0.50 vx -0.40/-0.50 | 3 | 36 | 2.2 | 9 |
+| fwd_back_mu1 | 2 | pass | ok | PASS | vx +0.39/+0.50 vx -0.40/-0.50 | 3 | 36 | 2.1 | 15 |
+| lateral_mu1 | 1 | pass | ok | PASS | vy +0.20/+0.30 vy -0.18/-0.30 | 4 | 37 | 2.1 | 13 |
+| lateral_mu1 | 2 | pass | ok | PASS | vy +0.18/+0.30 vy -0.19/-0.30 | 7 | 43 | 2.1 | 11 |
+| yaw_mu1 | 1 | pass | NOT OK | profile seg 1: yaw_err 0.31 rad/s > 0.2; profile seg 3: yaw_err 0.37 rad/s > 0.2 | wz +0.29/+0.60 wz -0.23/-0.60 | 3 | 47 | 2.1 | 13 |
+| yaw_mu1 | 2 | pass | NOT OK | profile seg 1: yaw_err 0.31 rad/s > 0.2; profile seg 3: yaw_err 0.37 rad/s > 0.2 | wz +0.29/+0.60 wz -0.23/-0.60 | 3 | 47 | 2.1 | 9 |
+| stand60_mu04 | 1 | safe | ok | safe |  | 2 | 13 | 2.1 | 12 |
+| stand60_mu04 | 2 | safe | ok | safe |  | 2 | 13 | 2.1 | 15 |
+| slow_mu04 | 1 | safe | ok | safe (tracking: profile seg 3: lin_err 0.15 m/s > 0.15) | vx +0.14/+0.25 vx -0.10/-0.25 | 2 | 30 | 2.1 | 13 |
+| slow_mu04 | 2 | safe | ok | safe (tracking: profile seg 3: lin_err 0.16 m/s > 0.15) | vx +0.14/+0.25 vx -0.10/-0.25 | 3 | 32 | 2.1 | 13 |
+| fwd_back_mu04 | 1 | safe | ok | safe | vx +0.40/+0.50 vx -0.40/-0.50 | 2 | 36 | 2.1 | 13 |
+| fwd_back_mu04 | 2 | safe | ok | safe | vx +0.40/+0.50 vx -0.40/-0.50 | 2 | 37 | 2.1 | 20 |
+| lateral_mu04 | 1 | safe | ok | safe | vy +0.22/+0.30 vy -0.19/-0.30 | 2 | 37 | 2.2 | 12 |
+| lateral_mu04 | 2 | safe | ok | safe | vy +0.22/+0.30 vy -0.19/-0.30 | 2 | 37 | 2.1 | 12 |
+| yaw_mu04 | 1 | safe | ok | safe (tracking: profile seg 1: yaw_err 0.30 rad/s > 0.2; profile seg 3: yaw_err 0.35 rad/s > 0.2) | wz +0.30/+0.60 wz -0.25/-0.60 | 3 | 47 | 2.1 | 15 |
+| yaw_mu04 | 2 | safe | ok | safe (tracking: profile seg 1: yaw_err 0.30 rad/s > 0.2; profile seg 3: yaw_err 0.35 rad/s > 0.2) | wz +0.30/+0.60 wz -0.25/-0.60 | 3 | 46 | 2.2 | 12 |
+
+
+conda activate go2deploy
+python go2_analyze.py logs/deploy/gen_slow_nominal.npz logs/deploy/genesis_20261103_140758_walk.npz \
+    logs/deploy/mujoco_20261103_133905_suite_slow_mu1_0.npz logs/deploy/mjtruth_suite_slow_mu1_0.npz
+python go2_analyze.py logs/deploy/gen_yaw_nominal.npz logs/deploy/gen_yaw_jl.npz \
+    logs/deploy/mujoco_20261103_134255_suite_yaw_mu1_0.npz logs/deploy/mjtruth_suite_yaw_mu1_0.npz
+
+
+[sandbed] sandbed on main [!+?⇡] took 19s
+❯ conda activate go2deploy
+
+[go2deploy] sandbed on main [!+?⇡]
+❯ python go2_analyze.py logs/deploy/gen_slow_nominal.npz logs/deploy/genesis_20261103_140758_walk.npz \
+    logs/deploy/mujoco_20261103_133905_suite_slow_mu1_0.npz logs/deploy/mjtruth_suite_slow_mu1_0.npz
+mjtruth_suite_slow_mu1_0: ground truth attached to C = mujoco_20261103_133905_suite_slow_mu1_0
+
+=== A = gen_slow_nominal (genesis) ===
+policy go2-p17h ckpt 1999 | 31.9 s | profile slow | scenario walk | truth: full
+modes: passive 0.0-1.0 s -> stand_up 1.0-4.6 s -> policy 4.6-27.8 s -> sit_down 27.8-30.3 s -> passive 30.3-31.9 s
+     1.000 s  -> stand_up (L1+R2, from passive)
+     4.600 s  -> policy (L1+A)
+     5.100 s  policy running
+     7.700 s  profile slow started (18 s)
+    25.700 s  profile slow ended: done
+    27.800 s  -> sit_down (L1+R1)
+    30.300 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              5.00 / 5.00 / 5.00
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.00 / 0.00 / 0.00
+  control step p50 / p99 / max [ms]             0.05 / 0.23 / 1.96
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          0.0
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.00 / 20.00
+  inference p50 / p99 / max [ms]                0.08 / 0.22 / 1.85
+  targets clipped to the joint range [steps]    39
+
+=== B = genesis_20261103_140758_walk (genesis) ===
+policy go2-p17h ckpt 1999 | 31.9 s | profile slow | scenario walk | truth: full
+modes: passive 0.0-1.0 s -> stand_up 1.0-4.6 s -> policy 4.6-27.8 s -> sit_down 27.8-30.3 s -> passive 30.3-31.9 s
+     1.000 s  -> stand_up (L1+R2, from passive)
+     4.600 s  -> policy (L1+A)
+     5.100 s  policy running
+     7.700 s  profile slow started (18 s)
+    25.700 s  profile slow ended: done
+    27.800 s  -> sit_down (L1+R1)
+    30.300 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              5.00 / 5.00 / 5.00
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.00 / 0.00 / 0.00
+  control step p50 / p99 / max [ms]             0.05 / 0.22 / 1.64
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          0.0
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.00 / 20.00
+  inference p50 / p99 / max [ms]                0.08 / 0.17 / 1.52
+  targets clipped to the joint range [steps]    39
+
+=== C = mujoco_20261103_133905_suite_slow_mu1_0 (mujoco) ===
+policy go2-p17h ckpt 1999 | 34.0 s | profile slow | scenario walk | truth: full
+modes: passive 0.3-1.2 s -> stand_up 1.3-4.8 s -> policy 4.9-28.0 s -> sit_down 28.1-30.6 s -> passive 30.6-34.3 s
+     1.250 s  -> stand_up (L1+R2, from passive)
+     4.850 s  -> policy (L1+A)
+     5.352 s  policy running
+     7.950 s  profile slow started (18 s)
+    25.954 s  profile slow ended: done
+    28.050 s  -> sit_down (L1+R1)
+    30.552 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              2.00 / 2.12 / 2.55
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.48 / 6.47 / 12.59
+  control step p50 / p99 / max [ms]             0.38 / 0.94 / 2.00
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          9.4
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.05 / 22.00
+  inference p50 / p99 / max [ms]                0.35 / 0.52 / 1.50
+  targets clipped to the joint range [steps]    139
+
+--- stand: vx +0.00 vy +0.00 wz +0.00 dh +0 cm (1.1 s) ---
+metric              A genesis        B genesis             C mujoco
+vx_meas             -0.000271  -0.000271 (d+0)   0.00154 (d+0.0018)
+vy_meas             -0.000482  -0.000482 (d+0)   0.0005 (d+0.00098)
+wz_meas             -0.000637  -0.000637 (d+0)  0.000427 (d+0.0011)
+lin_err[m/s]         0.000563   0.000563 (+0%)      0.00162 (+188%)
+yaw_err[rad/s]       0.000637   0.000637 (+0%)      0.000427 (-33%)
+vx_odo               -0.00013   -0.00013 (d+0)   0.00139 (d+0.0015)
+lin_err_odo[m/s]     0.000517   0.000517 (+0%)      0.00147 (+184%)
+z[m]                    0.325      0.325 (d+0)    0.325 (d-0.00073)
+z_est[m]                0.325      0.325 (d+0)     0.324 (d-0.0013)
+pitch[deg]             -0.967     -0.967 (d+0)        -2.69 (d-1.7)
+tilt_max[deg]           0.999      0.999 (+0%)          2.8 (+180%)
+drift[m]             0.000604   0.000604 (+0%)      0.00175 (+190%)
+yaw_drift[deg/s]      -0.0362    -0.0362 (d+0)      0.0233 (d+0.06)
+act_rate[rad/s]       0.00277    0.00277 (+0%)        0.0018 (-35%)
+act_acc[rad/s2]       0.00457    0.00457 (+0%)      0.000686 (-85%)
+hf>10Hz[%]             0.0176     0.0176 (+0%)      0.000189 (-99%)
+tau_rms[Nm]              3.26       3.26 (+0%)           3.23 (-1%)
+tau>10Hz[Nm]          0.00031    0.00031 (+0%)      0.000233 (-25%)
+tau_peak[%lim]           16.9       16.9 (+0%)          13.6 (-20%)
+power[W]               0.0666     0.0666 (+0%)        0.0956 (+43%)
+CoT[-]                      -                -                    -
+duty[-]                     1          1 (+0%)              1 (+0%)
+duty_true[-]                1          1 (+0%)              1 (+0%)
+step_freq[Hz]               0          0 (d+0)              0 (d+0)
+step_freq_true[Hz]          0          0 (d+0)              0 (d+0)
+swing_h[cm]                 -                -                    -
+loop_p99[ms]                5          5 (+0%)          2.13 (-57%)
+infer_p99[ms]           0.131     0.101 (-23%)        0.409 (+212%)
+
+--- profile seg 1: vx +0.25 vy +0.00 wz +0.00 dh +0 cm (4.5 s) ---
+metric              A genesis      B genesis             C mujoco
+vx_meas                 0.182    0.182 (d+0)      0.121 (d-0.061)
+vy_meas               0.00477  0.00477 (d+0)   0.00267 (d-0.0021)
+wz_meas                0.0029   0.0029 (d+0)  0.00215 (d-0.00075)
+lin_err[m/s]           0.0735   0.0735 (+0%)         0.131 (+78%)
+yaw_err[rad/s]         0.0156   0.0156 (+0%)       0.00661 (-58%)
+vx_odo                  0.169    0.169 (d+0)      0.112 (d-0.057)
+lin_err_odo[m/s]       0.0837   0.0837 (+0%)         0.139 (+66%)
+z[m]                    0.312    0.312 (d+0)     0.312 (d+0.0005)
+z_est[m]                0.311    0.311 (d+0)    0.312 (d+0.00048)
+pitch[deg]             -0.352   -0.352 (d+0)     -0.369 (d-0.017)
+tilt_max[deg]            2.27     2.27 (+0%)           1.6 (-29%)
+act_rate[rad/s]          1.66     1.66 (+0%)          1.24 (-25%)
+act_acc[rad/s2]          42.4     42.4 (+0%)            30 (-29%)
+hf>10Hz[%]              0.242    0.242 (+0%)         0.112 (-54%)
+tau_rms[Nm]              4.31     4.31 (+0%)           4.35 (+1%)
+tau>10Hz[Nm]            0.308    0.308 (+0%)         0.203 (-34%)
+tau_peak[%lim]           31.9     31.9 (+0%)           30.4 (-5%)
+power[W]                 16.1     16.1 (+0%)           14.8 (-8%)
+CoT[-]                  0.593    0.593 (+0%)         0.821 (+38%)
+duty[-]                 0.705    0.705 (+0%)           0.74 (+5%)
+duty_true[-]            0.728    0.728 (+0%)          0.776 (+7%)
+step_freq[Hz]            1.22     1.22 (+0%)         0.778 (-36%)
+step_freq_true[Hz]       1.22     1.22 (+0%)         0.833 (-32%)
+swing_h[cm]              4.92     4.92 (+0%)           5.24 (+7%)
+loop_p99[ms]                5        5 (+0%)          2.13 (-57%)
+infer_p99[ms]            0.18   0.38 (+111%)         0.54 (+199%)
+
+--- profile seg 3: vx -0.25 vy +0.00 wz +0.00 dh +0 cm (4.5 s) ---
+metric              A genesis      B genesis            C mujoco
+vx_meas                -0.194   -0.194 (d+0)   -0.0992 (d+0.095)
+vy_meas               0.00889  0.00889 (d+0)  0.00552 (d-0.0034)
+wz_meas               0.00651  0.00651 (d+0)  0.00356 (d-0.0029)
+lin_err[m/s]           0.0718   0.0718 (+0%)       0.156 (+117%)
+yaw_err[rad/s]         0.0141   0.0141 (+0%)      0.00743 (-47%)
+vx_odo                 -0.163   -0.163 (d+0)   -0.0817 (d+0.081)
+lin_err_odo[m/s]       0.0955   0.0955 (+0%)        0.171 (+79%)
+z[m]                    0.314    0.314 (d+0)    0.316 (d+0.0023)
+z_est[m]                0.313    0.313 (d+0)    0.316 (d+0.0024)
+pitch[deg]             -0.468   -0.468 (d+0)     -0.893 (d-0.42)
+tilt_max[deg]            1.81     1.81 (+0%)         2.51 (+38%)
+act_rate[rad/s]          1.95     1.95 (+0%)         1.17 (-40%)
+act_acc[rad/s2]          54.9     54.9 (+0%)         31.9 (-42%)
+hf>10Hz[%]              0.208    0.208 (+0%)        0.188 (-10%)
+tau_rms[Nm]              4.27     4.27 (+0%)          3.88 (-9%)
+tau>10Hz[Nm]            0.348    0.348 (+0%)        0.195 (-44%)
+tau_peak[%lim]           31.3     31.3 (+0%)          29.9 (-4%)
+power[W]                 18.6     18.6 (+0%)         11.6 (-38%)
+CoT[-]                  0.634    0.634 (+0%)        0.742 (+17%)
+duty[-]                 0.695    0.695 (+0%)        0.767 (+10%)
+duty_true[-]            0.696    0.696 (+0%)         0.81 (+16%)
+step_freq[Hz]            1.33     1.33 (+0%)        0.889 (-33%)
+step_freq_true[Hz]       1.33     1.33 (+0%)        0.889 (-33%)
+swing_h[cm]              5.34     5.34 (+0%)          3.7 (-31%)
+loop_p99[ms]                5        5 (+0%)         2.12 (-58%)
+infer_p99[ms]           0.172   0.143 (-17%)       0.476 (+177%)
+
+=== H3 gate (meant for unitree_mujoco runs through the deploy script) ===
+A genesis  PASS
+B genesis  PASS
+C mujoco   FAIL: profile seg 3: lin_err 0.16 m/s > 0.15
+
+[go2deploy] sandbed on main [!+?⇡]
+❯ python go2_analyze.py logs/deploy/gen_yaw_nominal.npz logs/deploy/gen_yaw_jl.npz \
+    logs/deploy/mujoco_20261103_134255_suite_yaw_mu1_0.npz logs/deploy/mjtruth_suite_yaw_mu1_0.npz
+mjtruth_suite_yaw_mu1_0: ground truth attached to C = mujoco_20261103_134255_suite_yaw_mu1_0
+
+=== A = gen_yaw_nominal (genesis) ===
+policy go2-p17h ckpt 1999 | 29.9 s | profile yaw | scenario walk | truth: full
+modes: passive 0.0-1.0 s -> stand_up 1.0-4.6 s -> policy 4.6-25.8 s -> sit_down 25.8-28.3 s -> passive 28.3-29.9 s
+     1.000 s  -> stand_up (L1+R2, from passive)
+     4.600 s  -> policy (L1+A)
+     5.100 s  policy running
+     7.700 s  profile yaw started (16 s)
+    23.700 s  profile yaw ended: done
+    25.800 s  -> sit_down (L1+R1)
+    28.300 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              5.00 / 5.00 / 5.00
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.00 / 0.00 / 0.00
+  control step p50 / p99 / max [ms]             0.05 / 0.53 / 10.98
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          0.0
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.00 / 20.00
+  inference p50 / p99 / max [ms]                0.09 / 0.39 / 10.84
+  targets clipped to the joint range [steps]    43
+
+=== B = gen_yaw_jl (genesis) ===
+policy go2-p17h ckpt 1999 | 29.9 s | profile yaw | scenario walk | truth: full
+modes: passive 0.0-1.0 s -> stand_up 1.0-4.6 s -> policy 4.6-25.8 s -> sit_down 25.8-28.3 s -> passive 28.3-29.9 s
+     1.000 s  -> stand_up (L1+R2, from passive)
+     4.600 s  -> policy (L1+A)
+     5.100 s  policy running
+     7.700 s  profile yaw started (16 s)
+    23.700 s  profile yaw ended: done
+    25.800 s  -> sit_down (L1+R1)
+    28.300 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              5.00 / 5.00 / 5.00
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.00 / 0.00 / 0.00
+  control step p50 / p99 / max [ms]             0.05 / 0.50 / 1.68
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          0.0
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.00 / 20.00
+  inference p50 / p99 / max [ms]                0.08 / 0.36 / 1.58
+  targets clipped to the joint range [steps]    43
+
+=== C = mujoco_20261103_134255_suite_yaw_mu1_0 (mujoco) ===
+policy go2-p17h ckpt 1999 | 32.0 s | profile yaw | scenario walk | truth: full
+modes: passive 0.3-1.3 s -> stand_up 1.3-4.9 s -> policy 4.9-26.1 s -> sit_down 26.1-28.6 s -> passive 28.6-32.3 s
+     1.254 s  -> stand_up (L1+R2, from passive)
+     4.854 s  -> policy (L1+A)
+     5.354 s  policy running
+     7.954 s  profile yaw started (16 s)
+    23.956 s  profile yaw ended: done
+    26.054 s  -> sit_down (L1+R1)
+    28.554 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              2.00 / 2.13 / 4.45
+  loop steps > 2x period                        2
+  state age p50 / p99 / max [ms]                0.82 / 6.81 / 12.78
+  control step p50 / p99 / max [ms]             0.37 / 0.85 / 1.36
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          10.5
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.03 / 22.03
+  inference p50 / p99 / max [ms]                0.33 / 0.46 / 0.64
+  targets clipped to the joint range [steps]    139
+
+--- stand: vx +0.00 vy +0.00 wz +0.00 dh +0 cm (1.1 s) ---
+metric              A genesis        B genesis             C mujoco
+vx_meas             -0.000271  -0.000271 (d+0)    0.0015 (d+0.0018)
+vy_meas             -0.000482  -0.000482 (d+0)   0.0005 (d+0.00098)
+wz_meas             -0.000637  -0.000637 (d+0)  0.000429 (d+0.0011)
+lin_err[m/s]         0.000563   0.000563 (+0%)      0.00158 (+181%)
+yaw_err[rad/s]       0.000637   0.000637 (+0%)      0.000429 (-33%)
+vx_odo               -0.00013   -0.00013 (d+0)   0.00135 (d+0.0015)
+lin_err_odo[m/s]     0.000517   0.000517 (+0%)      0.00143 (+177%)
+z[m]                    0.325      0.325 (d+0)    0.325 (d-0.00073)
+z_est[m]                0.325      0.325 (d+0)     0.324 (d-0.0013)
+pitch[deg]             -0.967     -0.967 (d+0)        -2.68 (d-1.7)
+tilt_max[deg]           0.999      0.999 (+0%)         2.79 (+179%)
+drift[m]             0.000604   0.000604 (+0%)      0.00171 (+183%)
+yaw_drift[deg/s]      -0.0362    -0.0362 (d+0)      0.0234 (d+0.06)
+act_rate[rad/s]       0.00277    0.00277 (+0%)       0.00178 (-36%)
+act_acc[rad/s2]       0.00457    0.00457 (+0%)      0.000689 (-85%)
+hf>10Hz[%]             0.0176     0.0176 (+0%)      0.000217 (-99%)
+tau_rms[Nm]              3.26       3.26 (+0%)           3.23 (-1%)
+tau>10Hz[Nm]          0.00031    0.00031 (+0%)      0.000213 (-31%)
+tau_peak[%lim]           16.9       16.9 (+0%)          13.5 (-20%)
+power[W]               0.0666     0.0666 (+0%)         0.097 (+46%)
+CoT[-]                      -                -                    -
+duty[-]                     1          1 (+0%)              1 (+0%)
+duty_true[-]                1          1 (+0%)              1 (+0%)
+step_freq[Hz]               0          0 (d+0)              0 (d+0)
+step_freq_true[Hz]          0          0 (d+0)              0 (d+0)
+swing_h[cm]                 -                -                    -
+loop_p99[ms]                5          5 (+0%)          2.13 (-57%)
+infer_p99[ms]           0.372     0.192 (-48%)         0.427 (+15%)
+
+--- profile seg 1: vx +0.00 vy +0.00 wz +0.60 dh +0 cm (3.5 s) ---
+metric              A genesis     B genesis            C mujoco
+vx_meas                  0.01    0.01 (d+0)  0.00767 (d-0.0023)
+vy_meas                0.0174  0.0174 (d+0)  0.0173 (d-7.5e-05)
+wz_meas                 0.541   0.541 (d+0)       0.29 (d-0.25)
+lin_err[m/s]           0.0359  0.0359 (+0%)        0.0354 (-1%)
+yaw_err[rad/s]         0.0607  0.0607 (+0%)       0.31 (d+0.25)
+vx_odo                 0.0112  0.0112 (d+0)  0.00828 (d-0.0029)
+lin_err_odo[m/s]       0.0346  0.0346 (+0%)       0.0308 (-11%)
+z[m]                     0.31    0.31 (d+0)    0.313 (d+0.0031)
+z_est[m]                0.309   0.309 (d+0)    0.312 (d+0.0031)
+pitch[deg]               0.62    0.62 (d+0)      0.731 (d+0.11)
+tilt_max[deg]            2.44    2.44 (+0%)         2.96 (+21%)
+act_rate[rad/s]          1.68    1.68 (+0%)         1.17 (-30%)
+act_acc[rad/s2]          47.3    47.3 (+0%)         29.9 (-37%)
+hf>10Hz[%]              0.411   0.411 (+0%)        0.238 (-42%)
+tau_rms[Nm]              4.29    4.29 (+0%)          4.07 (-5%)
+tau>10Hz[Nm]            0.335   0.335 (+0%)        0.207 (-38%)
+tau_peak[%lim]           36.2    36.2 (+0%)         41.3 (+14%)
+power[W]                 18.3    18.3 (+0%)         12.4 (-32%)
+CoT[-]                      -             -                   -
+duty[-]                 0.724   0.724 (+0%)          0.77 (+6%)
+duty_true[-]            0.757   0.757 (+0%)         0.818 (+8%)
+step_freq[Hz]            1.14    1.14 (+0%)        0.714 (-37%)
+step_freq_true[Hz]       1.14    1.14 (+0%)        0.786 (-31%)
+swing_h[cm]              5.11    5.11 (+0%)          4.87 (-5%)
+loop_p99[ms]                5       5 (+0%)         2.13 (-57%)
+infer_p99[ms]           0.166  0.138 (-17%)       0.455 (+175%)
+
+--- profile seg 3: vx +0.00 vy +0.00 wz -0.60 dh +0 cm (3.5 s) ---
+metric              A genesis      B genesis              C mujoco
+vx_meas               0.00409  0.00409 (d+0)  -2.21e-05 (d-0.0041)
+vy_meas               -0.0096  -0.0096 (d+0)    -0.0057 (d+0.0039)
+wz_meas                -0.511   -0.511 (d+0)       -0.229 (d+0.28)
+lin_err[m/s]           0.0304   0.0304 (+0%)         0.0241 (-21%)
+yaw_err[rad/s]         0.0909   0.0909 (+0%)        0.371 (d+0.28)
+vx_odo                0.00752  0.00752 (d+0)    0.00237 (d-0.0052)
+lin_err_odo[m/s]       0.0258   0.0258 (+0%)         0.0213 (-18%)
+z[m]                     0.31     0.31 (d+0)      0.315 (d+0.0041)
+z_est[m]                 0.31     0.31 (d+0)       0.314 (d+0.004)
+pitch[deg]             -0.203   -0.203 (d+0)       -0.477 (d-0.27)
+tilt_max[deg]            2.12     2.12 (+0%)           2.43 (+15%)
+act_rate[rad/s]          1.49     1.49 (+0%)          0.789 (-47%)
+act_acc[rad/s2]          41.1     41.1 (+0%)           18.7 (-55%)
+hf>10Hz[%]              0.573    0.573 (+0%)          0.182 (-68%)
+tau_rms[Nm]              4.14     4.14 (+0%)            3.93 (-5%)
+tau>10Hz[Nm]            0.322    0.322 (+0%)          0.188 (-42%)
+tau_peak[%lim]           33.9     33.9 (+0%)           46.7 (+38%)
+power[W]                 16.4     16.4 (+0%)           8.07 (-51%)
+CoT[-]                      -              -                     -
+duty[-]                  0.78     0.78 (+0%)           0.852 (+9%)
+duty_true[-]            0.785    0.785 (+0%)          0.889 (+13%)
+step_freq[Hz]               1        1 (+0%)          0.714 (-29%)
+step_freq_true[Hz]      0.929    0.929 (+0%)          0.643 (-31%)
+swing_h[cm]              5.33     5.33 (+0%)           3.17 (-40%)
+loop_p99[ms]                5        5 (+0%)           2.13 (-57%)
+infer_p99[ms]           0.301   0.134 (-55%)           0.44 (+46%)
+
+=== H3 gate (meant for unitree_mujoco runs through the deploy script) ===
+A genesis  PASS
+B genesis  PASS
+C mujoco   FAIL: profile seg 1: yaw_err 0.31 rad/s > 0.2; profile seg 3: yaw_err 0.37 rad/s > 0.2
+
+[go2deploy] sandbed on main [!+?⇡]
+❯

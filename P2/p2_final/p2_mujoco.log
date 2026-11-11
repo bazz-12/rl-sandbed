@@ -1,0 +1,381 @@
+nohup: ignoring input
+
+##### 09:28:21 unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1): /home/rbuche/miniforge3/envs/go2deploy/bin/python go2_sim_suite.py --policy logs/go2-p23/exported --um /home/rbuche/unitree_mujoco --only slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1 --repeat 1 --log-dir logs/deploy/go2-p23 --out out/p2_final/go2-p23/suite
+4 cases x 1 runs, about 3 min; scene scene_flat.xml, physics 2 ms; output in /home/rbuche/projects/sandbed/out/p2_final/go2-p23/suite
+mjtruth_suite_slow_mu1_0: ground truth attached to A = mujoco_20261106_092824_suite_slow_mu1_0
+ok     slow_mu1         run 1  PASS  [40 s]
+mjtruth_suite_fwd_back_mu1_0: ground truth attached to A = mujoco_20261106_092903_suite_fwd_back_mu1_0
+ok     fwd_back_mu1     run 1  PASS  [38 s]
+mjtruth_suite_lateral_mu1_0: ground truth attached to A = mujoco_20261106_092941_suite_lateral_mu1_0
+ok     lateral_mu1      run 1  PASS  [38 s]
+mjtruth_suite_yaw_mu1_0: ground truth attached to A = mujoco_20261106_093019_suite_yaw_mu1_0
+ok     yaw_mu1          run 1  PASS  [38 s]
+
+4/4 runs as expected. Summary: /home/rbuche/projects/sandbed/out/p2_final/go2-p23/suite/summary.md
+
+##### 09:30:54 analyze bench vs mujoco go2-p23 slow: analyze_to go2-p23/analyze_slow.txt logs/deploy/go2-p23/genesis_go2-p23_slow.npz logs/deploy/go2-p23/mujoco_20261106_092824_suite_slow_mu1_0.npz logs/deploy/go2-p23/mjtruth_suite_slow_mu1_0.npz --csv out/p2_final/go2-p23 --plots out/p2_final/go2-p23/plots_slow
+
+##### 09:30:56 compare bench vs mujoco go2-p23 slow: compare_to go2-p23/bench_vs_mujoco_slow.txt out/p2_final/go2-p23/metrics_genesis_go2-p23_slow.csv out/p2_final/go2-p23/metrics_mujoco_20261106_092824_suite_slow_mu1_0.csv
+
+##### 09:30:56 analyze bench vs mujoco go2-p23 fwd_back: analyze_to go2-p23/analyze_fwd_back.txt logs/deploy/go2-p23/genesis_go2-p23_fwd_back.npz logs/deploy/go2-p23/mujoco_20261106_092903_suite_fwd_back_mu1_0.npz logs/deploy/go2-p23/mjtruth_suite_fwd_back_mu1_0.npz --csv out/p2_final/go2-p23 --plots out/p2_final/go2-p23/plots_fwd_back
+
+##### 09:30:57 compare bench vs mujoco go2-p23 fwd_back: compare_to go2-p23/bench_vs_mujoco_fwd_back.txt out/p2_final/go2-p23/metrics_genesis_go2-p23_fwd_back.csv out/p2_final/go2-p23/metrics_mujoco_20261106_092903_suite_fwd_back_mu1_0.csv
+
+##### 09:30:57 analyze bench vs mujoco go2-p23 lateral: analyze_to go2-p23/analyze_lateral.txt logs/deploy/go2-p23/genesis_go2-p23_lateral.npz logs/deploy/go2-p23/mujoco_20261106_092941_suite_lateral_mu1_0.npz logs/deploy/go2-p23/mjtruth_suite_lateral_mu1_0.npz --csv out/p2_final/go2-p23 --plots out/p2_final/go2-p23/plots_lateral
+
+##### 09:30:58 compare bench vs mujoco go2-p23 lateral: compare_to go2-p23/bench_vs_mujoco_lateral.txt out/p2_final/go2-p23/metrics_genesis_go2-p23_lateral.csv out/p2_final/go2-p23/metrics_mujoco_20261106_092941_suite_lateral_mu1_0.csv
+
+##### 09:30:58 analyze bench vs mujoco go2-p23 yaw: analyze_to go2-p23/analyze_yaw.txt logs/deploy/go2-p23/genesis_go2-p23_yaw.npz logs/deploy/go2-p23/mujoco_20261106_093019_suite_yaw_mu1_0.npz logs/deploy/go2-p23/mjtruth_suite_yaw_mu1_0.npz --csv out/p2_final/go2-p23 --plots out/p2_final/go2-p23/plots_yaw
+
+##### 09:31:00 compare bench vs mujoco go2-p23 yaw: compare_to go2-p23/bench_vs_mujoco_yaw.txt out/p2_final/go2-p23/metrics_genesis_go2-p23_yaw.csv out/p2_final/go2-p23/metrics_mujoco_20261106_093019_suite_yaw_mu1_0.csv
+
+##### 09:31:00 unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1): /home/rbuche/miniforge3/envs/go2deploy/bin/python go2_sim_suite.py --policy logs/go2-p25-w1.5e-3/exported --um /home/rbuche/unitree_mujoco --only slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1 --repeat 1 --log-dir logs/deploy/go2-p25-w1.5e-3 --out out/p2_final/go2-p25-w1.5e-3/suite
+4 cases x 1 runs, about 3 min; scene scene_flat.xml, physics 2 ms; output in /home/rbuche/projects/sandbed/out/p2_final/go2-p25-w1.5e-3/suite
+mjtruth_suite_slow_mu1_0: ground truth attached to A = mujoco_20261106_093102_suite_slow_mu1_0
+ok     slow_mu1         run 1  PASS  [40 s]
+mjtruth_suite_fwd_back_mu1_0: ground truth attached to A = mujoco_20261106_093142_suite_fwd_back_mu1_0
+ok     fwd_back_mu1     run 1  PASS  [38 s]
+mjtruth_suite_lateral_mu1_0: ground truth attached to A = mujoco_20261106_093220_suite_lateral_mu1_0
+ok     lateral_mu1      run 1  PASS  [38 s]
+mjtruth_suite_yaw_mu1_0: ground truth attached to A = mujoco_20261106_093257_suite_yaw_mu1_0
+ok     yaw_mu1          run 1  PASS  [38 s]
+
+4/4 runs as expected. Summary: /home/rbuche/projects/sandbed/out/p2_final/go2-p25-w1.5e-3/suite/summary.md
+
+##### 09:33:33 analyze bench vs mujoco go2-p25-w1.5e-3 slow: analyze_to go2-p25-w1.5e-3/analyze_slow.txt logs/deploy/go2-p25-w1.5e-3/genesis_go2-p25-w1.5e-3_slow.npz logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093102_suite_slow_mu1_0.npz logs/deploy/go2-p25-w1.5e-3/mjtruth_suite_slow_mu1_0.npz --csv out/p2_final/go2-p25-w1.5e-3 --plots out/p2_final/go2-p25-w1.5e-3/plots_slow
+
+##### 09:33:34 compare bench vs mujoco go2-p25-w1.5e-3 slow: compare_to go2-p25-w1.5e-3/bench_vs_mujoco_slow.txt out/p2_final/go2-p25-w1.5e-3/metrics_genesis_go2-p25-w1.5e-3_slow.csv out/p2_final/go2-p25-w1.5e-3/metrics_mujoco_20261106_093102_suite_slow_mu1_0.csv
+
+##### 09:33:34 analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back: analyze_to go2-p25-w1.5e-3/analyze_fwd_back.txt logs/deploy/go2-p25-w1.5e-3/genesis_go2-p25-w1.5e-3_fwd_back.npz logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093142_suite_fwd_back_mu1_0.npz logs/deploy/go2-p25-w1.5e-3/mjtruth_suite_fwd_back_mu1_0.npz --csv out/p2_final/go2-p25-w1.5e-3 --plots out/p2_final/go2-p25-w1.5e-3/plots_fwd_back
+
+##### 09:33:35 compare bench vs mujoco go2-p25-w1.5e-3 fwd_back: compare_to go2-p25-w1.5e-3/bench_vs_mujoco_fwd_back.txt out/p2_final/go2-p25-w1.5e-3/metrics_genesis_go2-p25-w1.5e-3_fwd_back.csv out/p2_final/go2-p25-w1.5e-3/metrics_mujoco_20261106_093142_suite_fwd_back_mu1_0.csv
+
+##### 09:33:35 analyze bench vs mujoco go2-p25-w1.5e-3 lateral: analyze_to go2-p25-w1.5e-3/analyze_lateral.txt logs/deploy/go2-p25-w1.5e-3/genesis_go2-p25-w1.5e-3_lateral.npz logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093220_suite_lateral_mu1_0.npz logs/deploy/go2-p25-w1.5e-3/mjtruth_suite_lateral_mu1_0.npz --csv out/p2_final/go2-p25-w1.5e-3 --plots out/p2_final/go2-p25-w1.5e-3/plots_lateral
+
+##### 09:33:37 compare bench vs mujoco go2-p25-w1.5e-3 lateral: compare_to go2-p25-w1.5e-3/bench_vs_mujoco_lateral.txt out/p2_final/go2-p25-w1.5e-3/metrics_genesis_go2-p25-w1.5e-3_lateral.csv out/p2_final/go2-p25-w1.5e-3/metrics_mujoco_20261106_093220_suite_lateral_mu1_0.csv
+
+##### 09:33:37 analyze bench vs mujoco go2-p25-w1.5e-3 yaw: analyze_to go2-p25-w1.5e-3/analyze_yaw.txt logs/deploy/go2-p25-w1.5e-3/genesis_go2-p25-w1.5e-3_yaw.npz logs/deploy/go2-p25-w1.5e-3/mujoco_20261106_093257_suite_yaw_mu1_0.npz logs/deploy/go2-p25-w1.5e-3/mjtruth_suite_yaw_mu1_0.npz --csv out/p2_final/go2-p25-w1.5e-3 --plots out/p2_final/go2-p25-w1.5e-3/plots_yaw
+
+##### 09:33:38 compare bench vs mujoco go2-p25-w1.5e-3 yaw: compare_to go2-p25-w1.5e-3/bench_vs_mujoco_yaw.txt out/p2_final/go2-p25-w1.5e-3/metrics_genesis_go2-p25-w1.5e-3_yaw.csv out/p2_final/go2-p25-w1.5e-3/metrics_mujoco_20261106_093257_suite_yaw_mu1_0.csv
+
+##### 09:33:38 energy in mujoco slow: compare_to energy_in_mujoco_slow.txt out/p2_final/go2-p23/mujoco_slow.csv out/p2_final/go2-p25-w1.5e-3/mujoco_slow.csv
+
+##### 09:33:38 energy in mujoco fwd_back: compare_to energy_in_mujoco_fwd_back.txt out/p2_final/go2-p23/mujoco_fwd_back.csv out/p2_final/go2-p25-w1.5e-3/mujoco_fwd_back.csv
+
+##### 09:33:38 energy in mujoco lateral: compare_to energy_in_mujoco_lateral.txt out/p2_final/go2-p23/mujoco_lateral.csv out/p2_final/go2-p25-w1.5e-3/mujoco_lateral.csv
+
+##### 09:33:38 energy in mujoco yaw: compare_to energy_in_mujoco_yaw.txt out/p2_final/go2-p23/mujoco_yaw.csv out/p2_final/go2-p25-w1.5e-3/mujoco_yaw.csv
+
+##### 09:33:38 suite gate: /home/rbuche/miniforge3/envs/go2deploy/bin/python go2_sim_suite.py --policy logs/go2-p25-w1.5e-3/exported --um /home/rbuche/unitree_mujoco --suite gate --out out/p2_final/suite_gate
+10 cases x 2 runs, about 18 min; scene scene_flat.xml, physics 2 ms; output in /home/rbuche/projects/sandbed/out/p2_final/suite_gate
+mjtruth_suite_stand60_mu1_0: ground truth attached to A = mujoco_20261106_093340_suite_stand60_mu1_0
+ok     stand60_mu1      run 1  PASS  [82 s]
+mjtruth_suite_stand60_mu1_1: ground truth attached to A = mujoco_20261106_093502_suite_stand60_mu1_1
+ok     stand60_mu1      run 2  PASS  [82 s]
+mjtruth_suite_slow_mu1_0: ground truth attached to A = mujoco_20261106_093624_suite_slow_mu1_0
+ok     slow_mu1         run 1  PASS  [40 s]
+mjtruth_suite_slow_mu1_1: ground truth attached to A = mujoco_20261106_093704_suite_slow_mu1_1
+ok     slow_mu1         run 2  PASS  [40 s]
+mjtruth_suite_fwd_back_mu1_0: ground truth attached to A = mujoco_20261106_093744_suite_fwd_back_mu1_0
+ok     fwd_back_mu1     run 1  PASS  [38 s]
+mjtruth_suite_fwd_back_mu1_1: ground truth attached to A = mujoco_20261106_093822_suite_fwd_back_mu1_1
+ok     fwd_back_mu1     run 2  PASS  [38 s]
+mjtruth_suite_lateral_mu1_0: ground truth attached to A = mujoco_20261106_093859_suite_lateral_mu1_0
+ok     lateral_mu1      run 1  PASS  [38 s]
+mjtruth_suite_lateral_mu1_1: ground truth attached to A = mujoco_20261106_093937_suite_lateral_mu1_1
+ok     lateral_mu1      run 2  PASS  [38 s]
+mjtruth_suite_yaw_mu1_0: ground truth attached to A = mujoco_20261106_094015_suite_yaw_mu1_0
+ok     yaw_mu1          run 1  PASS  [38 s]
+mjtruth_suite_yaw_mu1_1: ground truth attached to A = mujoco_20261106_094053_suite_yaw_mu1_1
+ok     yaw_mu1          run 2  PASS  [38 s]
+mjtruth_suite_stand60_mu04_0: ground truth attached to A = mujoco_20261106_094131_suite_stand60_mu04_0
+ok     stand60_mu04     run 1  safe  [82 s]
+mjtruth_suite_stand60_mu04_1: ground truth attached to A = mujoco_20261106_094253_suite_stand60_mu04_1
+ok     stand60_mu04     run 2  safe  [82 s]
+mjtruth_suite_slow_mu04_0: ground truth attached to A = mujoco_20261106_094415_suite_slow_mu04_0
+ok     slow_mu04        run 1  safe  [40 s]
+mjtruth_suite_slow_mu04_1: ground truth attached to A = mujoco_20261106_094454_suite_slow_mu04_1
+ok     slow_mu04        run 2  safe  [40 s]
+mjtruth_suite_fwd_back_mu04_0: ground truth attached to A = mujoco_20261106_094534_suite_fwd_back_mu04_0
+ok     fwd_back_mu04    run 1  safe  [38 s]
+mjtruth_suite_fwd_back_mu04_1: ground truth attached to A = mujoco_20261106_094612_suite_fwd_back_mu04_1
+ok     fwd_back_mu04    run 2  safe  [38 s]
+mjtruth_suite_lateral_mu04_0: ground truth attached to A = mujoco_20261106_094650_suite_lateral_mu04_0
+ok     lateral_mu04     run 1  safe  [38 s]
+mjtruth_suite_lateral_mu04_1: ground truth attached to A = mujoco_20261106_094727_suite_lateral_mu04_1
+ok     lateral_mu04     run 2  safe  [38 s]
+mjtruth_suite_yaw_mu04_0: ground truth attached to A = mujoco_20261106_094805_suite_yaw_mu04_0
+ok     yaw_mu04         run 1  safe  [38 s]
+mjtruth_suite_yaw_mu04_1: ground truth attached to A = mujoco_20261106_094843_suite_yaw_mu04_1
+ok     yaw_mu04         run 2  safe  [38 s]
+
+20/20 runs as expected. Summary: /home/rbuche/projects/sandbed/out/p2_final/suite_gate/summary.md
+
+##### 09:49:18 suite stress: /home/rbuche/miniforge3/envs/go2deploy/bin/python go2_sim_suite.py --policy logs/go2-p25-w1.5e-3/exported --um /home/rbuche/unitree_mujoco --suite stress --out out/p2_final/suite_stress
+15 cases x 2 runs, about 22 min; scene scene_flat.xml, physics 2 ms; output in /home/rbuche/projects/sandbed/out/p2_final/suite_stress
+mjtruth_suite_noise1_0: ground truth attached to A = mujoco_20261106_094921_suite_noise1_0
+ok     noise1           run 1  PASS  [38 s]
+mjtruth_suite_noise1_1: ground truth attached to A = mujoco_20261106_094959_suite_noise1_1
+ok     noise1           run 2  PASS  [38 s]
+mjtruth_suite_noise2_0: ground truth attached to A = mujoco_20261106_095036_suite_noise2_0
+ok     noise2           run 1  safe  [38 s]
+mjtruth_suite_noise2_1: ground truth attached to A = mujoco_20261106_095114_suite_noise2_1
+ok     noise2           run 2  safe  [38 s]
+mjtruth_suite_cmd_delay10_0: ground truth attached to A = mujoco_20261106_095152_suite_cmd_delay10_0
+ok     cmd_delay10      run 1  PASS  [38 s]
+mjtruth_suite_cmd_delay10_1: ground truth attached to A = mujoco_20261106_095230_suite_cmd_delay10_1
+ok     cmd_delay10      run 2  PASS  [38 s]
+mjtruth_suite_cmd_delay20_0: ground truth attached to A = mujoco_20261106_095308_suite_cmd_delay20_0
+ok     cmd_delay20      run 1  PASS  [38 s]
+mjtruth_suite_cmd_delay20_1: ground truth attached to A = mujoco_20261106_095345_suite_cmd_delay20_1
+ok     cmd_delay20      run 2  PASS  [38 s]
+mjtruth_suite_cmd_delay40_0: ground truth attached to A = mujoco_20261106_095423_suite_cmd_delay40_0
+ok     cmd_delay40      run 1  safe  [38 s]
+mjtruth_suite_cmd_delay40_1: ground truth attached to A = mujoco_20261106_095501_suite_cmd_delay40_1
+ok     cmd_delay40      run 2  safe  [38 s]
+mjtruth_suite_state_delay10_0: ground truth attached to A = mujoco_20261106_095539_suite_state_delay10_0
+ok     state_delay10    run 1  safe  [38 s]
+mjtruth_suite_state_delay10_1: ground truth attached to A = mujoco_20261106_095616_suite_state_delay10_1
+ok     state_delay10    run 2  safe  [38 s]
+mjtruth_suite_drop20_0: ground truth attached to A = mujoco_20261106_095654_suite_drop20_0
+ok     drop20           run 1  PASS  [38 s]
+mjtruth_suite_drop20_1: ground truth attached to A = mujoco_20261106_095732_suite_drop20_1
+ok     drop20           run 2  PASS  [38 s]
+mjtruth_suite_payload2_0: ground truth attached to A = mujoco_20261106_095810_suite_payload2_0
+ok     payload2         run 1  PASS  [38 s]
+mjtruth_suite_payload2_1: ground truth attached to A = mujoco_20261106_095847_suite_payload2_1
+ok     payload2         run 2  PASS  [38 s]
+mjtruth_suite_payload5_0: ground truth attached to A = mujoco_20261106_095925_suite_payload5_0
+ok     payload5         run 1  safe  [38 s]
+mjtruth_suite_payload5_1: ground truth attached to A = mujoco_20261106_100003_suite_payload5_1
+ok     payload5         run 2  safe  [38 s]
+mjtruth_suite_com3cm_0: ground truth attached to A = mujoco_20261106_100041_suite_com3cm_0
+ok     com3cm           run 1  PASS  [38 s]
+mjtruth_suite_com3cm_1: ground truth attached to A = mujoco_20261106_100118_suite_com3cm_1
+ok     com3cm           run 2  PASS  [38 s]
+mjtruth_suite_weak90_0: ground truth attached to A = mujoco_20261106_100156_suite_weak90_0
+ok     weak90           run 1  PASS  [38 s]
+mjtruth_suite_weak90_1: ground truth attached to A = mujoco_20261106_100234_suite_weak90_1
+ok     weak90           run 2  PASS  [38 s]
+mjtruth_suite_weak75_0: ground truth attached to A = mujoco_20261106_100312_suite_weak75_0
+ok     weak75           run 1  safe  [38 s]
+mjtruth_suite_weak75_1: ground truth attached to A = mujoco_20261106_100350_suite_weak75_1
+ok     weak75           run 2  safe  [38 s]
+mjtruth_suite_push05_0: ground truth attached to A = mujoco_20261106_100427_suite_push05_0
+ok     push05           run 1  safe  [38 s]
+mjtruth_suite_push05_1: ground truth attached to A = mujoco_20261106_100505_suite_push05_1
+ok     push05           run 2  safe  [38 s]
+mjtruth_suite_pd_per_step_0: ground truth attached to A = mujoco_20261106_100543_suite_pd_per_step_0
+ok     pd_per_step      run 1  PASS  [38 s]
+mjtruth_suite_pd_per_step_1: ground truth attached to A = mujoco_20261106_100621_suite_pd_per_step_1
+ok     pd_per_step      run 2  PASS  [38 s]
+mjtruth_suite_offset3_0: ground truth attached to A = mujoco_20261106_100659_suite_offset3_0
+ok     offset3          run 1  safe  [38 s]
+mjtruth_suite_offset3_1: ground truth attached to A = mujoco_20261106_100737_suite_offset3_1
+ok     offset3          run 2  safe  [38 s]
+
+30/30 runs as expected. Summary: /home/rbuche/projects/sandbed/out/p2_final/suite_stress/summary.md
+=== P2 overnight batch, started 2026-11-05 18:53:05 ===
+OK       train go2-p25-s2                                           60 min
+OK       train go2-p23-s2                                           59 min
+OK       metrics go2-p23-s2                                          0 min
+OK       metrics go2-p25-s2                                          0 min
+OK       metrics go2-p21-c0.45                                       0 min
+OK       metrics go2-p23                                             0 min
+OK       metrics go2-p25-w1.5e-3                                     0 min
+OK       metrics go2-p21-c0.45 --keep_dr                             1 min
+OK       metrics go2-p25-w1.5e-3 --keep_dr                           0 min
+OK       metrics go2-p25-s2 --keep_dr                                0 min
+OK       compare nominal                                             0 min
+OK       compare training DR                                         0 min
+OK       export go2-p25-w1.5e-3                                      0 min
+OK       export go2-p23                                              0 min
+OK       test_go2_deploy go2-p25-w1.5e-3                             0 min
+OK       fsm_sim full                                                0 min
+OK       fsm_sim 16 robots DR                                        0 min
+OK       fsm_sim estop                                               0 min
+OK       bench go2-p23 slow                                          0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       bench go2-p23 yaw                                           0 min
+FAIL 1   unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p23 slow
+FAIL     no unitree_mujoco log for go2-p23 fwd_back
+FAIL     no unitree_mujoco log for go2-p23 lateral
+FAIL     no unitree_mujoco log for go2-p23 yaw
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 slow
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 fwd_back
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 lateral
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 yaw
+FAIL 1   energy in mujoco slow                                       0 min
+FAIL 1   energy in bench slow                                        0 min
+FAIL 1   energy in mujoco fwd_back                                   0 min
+FAIL 1   energy in bench fwd_back                                    0 min
+FAIL 1   energy in mujoco lateral                                    0 min
+FAIL 1   energy in bench lateral                                     0 min
+FAIL 1   energy in mujoco yaw                                        0 min
+FAIL 1   energy in bench yaw                                         0 min
+FAIL 1   suite gate                                                  0 min
+FAIL 1   suite stress                                                0 min
+=== finished 2026-11-05 21:01:52 ===
+=== P2 overnight batch, started 2026-11-05 21:29:42 ===
+OK       metrics go2-p23-s2                                          0 min
+OK       metrics go2-p25-s2                                          0 min
+OK       metrics go2-p21-c0.45                                       0 min
+OK       metrics go2-p23                                             0 min
+OK       metrics go2-p25-w1.5e-3                                     0 min
+OK       metrics go2-p21-c0.45 --keep_dr                             0 min
+OK       metrics go2-p25-w1.5e-3 --keep_dr                           0 min
+OK       metrics go2-p25-s2 --keep_dr                                0 min
+OK       compare nominal                                             0 min
+OK       compare training DR                                         0 min
+OK       test_go2_deploy go2-p25-w1.5e-3                             0 min
+OK       fsm_sim full                                                0 min
+OK       fsm_sim 16 robots DR                                        0 min
+OK       fsm_sim estop                                               0 min
+OK       bench go2-p23 slow                                          0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       bench go2-p23 yaw                                           0 min
+FAIL 1   unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p23 slow
+FAIL     no unitree_mujoco log for go2-p23 fwd_back
+FAIL     no unitree_mujoco log for go2-p23 lateral
+FAIL     no unitree_mujoco log for go2-p23 yaw
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 slow
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 fwd_back
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 lateral
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 yaw
+FAIL 1   energy in mujoco slow                                       0 min
+FAIL 1   energy in bench slow                                        0 min
+FAIL 1   energy in mujoco fwd_back                                   0 min
+FAIL 1   energy in bench fwd_back                                    0 min
+FAIL 1   energy in mujoco lateral                                    0 min
+FAIL 1   energy in bench lateral                                     0 min
+FAIL 1   energy in mujoco yaw                                        0 min
+FAIL 1   energy in bench yaw                                         0 min
+FAIL 1   suite gate                                                  0 min
+FAIL 1   suite stress                                                0 min
+=== finished 2026-11-05 21:33:52 ===
+=== P2 batch, started 2026-11-06 09:01:30, stages: bench mujoco suites ===
+OK       bench go2-p23 slow                                          0 min
+OK       analyze bench go2-p23 slow                                  0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       analyze bench go2-p23 fwd_back                              0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       analyze bench go2-p23 lateral                               0 min
+OK       bench go2-p23 yaw                                           0 min
+OK       analyze bench go2-p23 yaw                                   0 min
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       analyze bench go2-p25-w1.5e-3 slow                          0 min
+=== P2 batch, started 2026-11-06 09:04:30, stages: bench mujoco suites ===
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       analyze bench go2-p25-w1.5e-3 fwd_back                      0 min
+OK       bench go2-p23 slow                                          0 min
+OK       analyze bench go2-p23 slow                                  0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       analyze bench go2-p25-w1.5e-3 lateral                       0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       analyze bench go2-p23 fwd_back                              0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+OK       analyze bench go2-p25-w1.5e-3 yaw                           0 min
+OK       energy in bench slow                                        0 min
+OK       energy in bench fwd_back                                    0 min
+OK       energy in bench lateral                                     0 min
+OK       energy in bench yaw                                         0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       analyze bench go2-p23 lateral                               0 min
+OK       bench go2-p23 yaw                                           0 min
+OK       analyze bench go2-p23 yaw                                   0 min
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       analyze bench go2-p25-w1.5e-3 slow                          0 min
+OK       unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     2 min
+OK       analyze bench vs mujoco go2-p23 slow                        0 min
+OK       compare bench vs mujoco go2-p23 slow                        0 min
+OK       analyze bench vs mujoco go2-p23 fwd_back                    0 min
+OK       compare bench vs mujoco go2-p23 fwd_back                    0 min
+OK       analyze bench vs mujoco go2-p23 lateral                     0 min
+OK       compare bench vs mujoco go2-p23 lateral                     0 min
+OK       analyze bench vs mujoco go2-p23 yaw                         0 min
+OK       compare bench vs mujoco go2-p23 yaw                         0 min
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       analyze bench go2-p25-w1.5e-3 fwd_back                      0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       analyze bench go2-p25-w1.5e-3 lateral                       0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+OK       analyze bench go2-p25-w1.5e-3 yaw                           0 min
+OK       energy in bench slow                                        0 min
+OK       energy in bench fwd_back                                    0 min
+OK       energy in bench lateral                                     0 min
+OK       energy in bench yaw                                         0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     3 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+FAIL 1   analyze bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+FAIL 1   compare bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       energy in mujoco slow                                       0 min
+OK       energy in mujoco fwd_back                                   0 min
+FAIL 1   energy in mujoco lateral                                    0 min
+OK       energy in mujoco yaw                                        0 min
+FAIL 1   unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     3 min
+OK       analyze bench vs mujoco go2-p23 slow                        0 min
+OK       compare bench vs mujoco go2-p23 slow                        0 min
+OK       analyze bench vs mujoco go2-p23 fwd_back                    0 min
+OK       compare bench vs mujoco go2-p23 fwd_back                    0 min
+OK       analyze bench vs mujoco go2-p23 lateral                     0 min
+OK       compare bench vs mujoco go2-p23 lateral                     0 min
+OK       analyze bench vs mujoco go2-p23 yaw                         0 min
+FAIL 1   compare bench vs mujoco go2-p23 yaw                         0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     3 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+FAIL 1   compare bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       energy in mujoco slow                                       0 min
+FAIL 1   energy in mujoco fwd_back                                   0 min
+OK       energy in mujoco lateral                                    0 min
+FAIL 1   energy in mujoco yaw                                        0 min
+=== P2 batch, started 2026-11-06 09:28:20, stages: mujoco suites ===
+OK       unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     2 min
+OK       analyze bench vs mujoco go2-p23 slow                        0 min
+OK       compare bench vs mujoco go2-p23 slow                        0 min
+OK       analyze bench vs mujoco go2-p23 fwd_back                    0 min
+OK       compare bench vs mujoco go2-p23 fwd_back                    0 min
+OK       analyze bench vs mujoco go2-p23 lateral                     0 min
+OK       compare bench vs mujoco go2-p23 lateral                     0 min
+OK       analyze bench vs mujoco go2-p23 yaw                         0 min
+OK       compare bench vs mujoco go2-p23 yaw                         0 min
+OK       unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     2 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       energy in mujoco slow                                       0 min
+OK       energy in mujoco fwd_back                                   0 min
+OK       energy in mujoco lateral                                    0 min
+OK       energy in mujoco yaw                                        0 min
+OK       suite gate                                                 15 min
+OK       suite stress                                               18 min
+=== finished 2026-11-06 10:08:12 ===

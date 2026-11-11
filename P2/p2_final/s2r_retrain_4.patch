@@ -1,0 +1,114 @@
+diff --git a/go2_env.py b/go2_env.py
+index 5f3cbba..d845c42 100644
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -28,6 +28,10 @@ GO2_CALF_LENGTH = 0.213  # [m] calf joint -> foot sphere centre
+ GO2_JOINT_FRICTION = 0.2  # [Nm] Coulomb (dry) friction, solved as a constraint by Genesis, not part of self.torques
+ GO2_JOINT_DAMPING = 0.1  # [Nm s/rad] viscous damping, on top of the PD's kd
+ GO2_FOOT_RADIUS = 0.023  # [m] [S2R] foot sphere: its centre is this high when the foot stands on flat ground
++# [S2R] lower leg of unitree_mujoco's go2.xml: calf body with the foot sphere, mass [kg] and CoM in the calf frame [m]
++# (|y| mirrored per side). go2.urdf has a lighter calf (0.154 kg, CoM at z = -0.115) plus a 0.04 kg foot link at -0.213.
++GO2_MJCF_LOWER_LEG = {"mass": 0.241352, "com": (0.00629595, 0.000622121, -0.141417)}
++URDF_FOOT_MASS, URDF_FOOT_POS = 0.04, (-0.002, 0.0, -0.213)  # go2.urdf foot link, in the calf frame
+ 
+ # [P1.2] Physics used when a config does not say otherwise (runs trained before P1.2 included), so that every
+ # policy is evaluated in the same simulated world.
+@@ -458,6 +462,23 @@ class Go2Env:
+         damping = uniform(*dr["joint_damping_range"], (N, J)) if "joint_damping_range" in dr else self.joint_damping
+         if self._joint_losses_randomized() or self.joint_friction.any() or self.joint_damping.any():
+             self.set_joint_losses(friction.clone(), damping.clone())
++        if self.env_cfg.get("lower_leg_inertial"):  # [S2R]
++            self.set_lower_leg_inertial(self.env_cfg["lower_leg_inertial"])
++
++    def set_lower_leg_inertial(self, lower_leg):
++        """[S2R] Give each calf link the mass and CoM that make calf + foot link equal lower_leg = {"mass": kg (calf
++        with foot), "com": (x, y, z) in the calf frame}, e.g. GO2_MJCF_LOWER_LEG. The foot link keeps its 0.04 kg.
++        Rotational inertia about the CoM is left as in go2.urdf (it is the small part: most of the difference is the
++        mass sitting lower). Also used by go2_fsm_sim.py --mjcf-legs."""
++        calves = [self.robot.get_link(f"{leg}_calf").idx_local for leg in ("FL", "FR", "RL", "RR")]
++        m_leg, (x, y, z) = float(lower_leg["mass"]), lower_leg["com"]
++        m_calf = m_leg - URDF_FOOT_MASS
++        com = self.robot.get_links_COM(calves).clone()  # [4, 3], or [N, 4, 3] with batched link info
++        com[..., 0] = (m_leg * x - URDF_FOOT_MASS * URDF_FOOT_POS[0]) / m_calf
++        com[..., 1] = torch.sign(com[..., 1]) * abs(y) * m_leg / m_calf  # foot link at y = 0
++        com[..., 2] = (m_leg * z - URDF_FOOT_MASS * URDF_FOOT_POS[2]) / m_calf
++        self.robot.set_links_mass(torch.full(com.shape[:-1], m_calf, dtype=com.dtype, device=com.device), calves)
++        self.robot.set_links_COM(com, calves)
+ 
+     def _fallen_starts(self, envs_idx):
+         # [P1.5] A share recovery_init_prob of the reset envs restarts from a random fallen state, dropped from
+diff --git a/go2_fsm_sim.py b/go2_fsm_sim.py
+index a0ce455..4bdf960 100644
+--- a/go2_fsm_sim.py
++++ b/go2_fsm_sim.py
+@@ -40,7 +40,7 @@ import genesis as gs
+ from genesis.utils.geom import inv_quat, transform_by_quat
+ 
+ import go2_log
+-from go2_env import Go2Env, nominal_world
++from go2_env import Go2Env, nominal_world, GO2_MJCF_LOWER_LEG  # [S2R] GO2_MJCF_LOWER_LEG
+ from go2_export import make_deploy_cfg
+ from go2_fsm import LIE_POSE_LEG, MODES, FsmConfig, Go2StateMachine, Mode, Policy
+ from go2_inputs import PROFILES, SCENARIOS, CommandProfile, Scenario, buttons_mask
+@@ -181,7 +181,7 @@ def main():
+                    help="contact spin resistance [m] (go2.xml: 0.02; 0 = point contact, rolling off too)")
+     p.add_argument("--mjcf-legs", action="store_true",
+                    help="calf mass and CoM of unitree_mujoco's go2.xml (0.241 kg with the foot, CoM 14.1 cm below the "
+-                        "knee) instead of go2.urdf's (0.154 + 0.04 kg, 11.5 cm)")
++                        "knee) instead of go2.urdf's (0.154 + 0.04 kg, 11.5 cm); runs trained with them already have them")
+     p.add_argument("--cone", choices=("pyramidal", "elliptic"), default=None,
+                    help="friction cone (go2.xml: elliptic; Genesis default: pyramidal)")
+     p.add_argument("--impratio", type=float, default=None, help="friction / normal impedance ratio (go2.xml: 100)")
+@@ -225,16 +225,8 @@ def main():
+     # [S2R] joint losses (unitree_mujoco's go2.xml: damping 0.1, friction 0.2)
+     # [S2R] runs trained with joint losses already have them (env_cfg); these flags override the run's values
+     env.set_joint_losses(friction=args.joint_friction, damping=args.joint_damping)
+-    if args.mjcf_legs:  # [S2R] go2.xml calf (foot included) = URDF calf + URDF foot (0.04 kg at z = -0.213)
+-        calves = [env.robot.get_link(f"{leg}_calf").idx_local for leg in ("FL", "FR", "RL", "RR")]
+-        m_foot, z_foot, m_mj, x_mj, z_mj = 0.04, -0.213, 0.241352, 0.00629595, -0.141417
+-        m_calf = m_mj - m_foot
+-        com = env.robot.get_links_COM(calves).clone()  # link frame, [4, 3] (or [N, 4, 3] with batched link info)
+-        com[..., 0] = (m_mj * x_mj - m_foot * -0.002) / m_calf
+-        com[..., 2] = (m_mj * z_mj - m_foot * z_foot) / m_calf
+-        mass = torch.full(com.shape[:-1], m_calf, dtype=com.dtype, device=com.device)
+-        env.robot.set_links_mass(mass, calves)
+-        env.robot.set_links_COM(com, calves)
++    if args.mjcf_legs:  # [S2R] go2.xml's lower legs (heavier, CoM lower than go2.urdf's)
++        env.set_lower_leg_inertial(GO2_MJCF_LOWER_LEG)
+     if args.friction is not None:  # [S2R] as Go2Env's friction randomization: ground and robot get the same ratio
+         n_links = env.robot.n_links
+         env.friction[:] = args.friction
+diff --git a/go2_train.py b/go2_train.py
+index f47eac0..3a05ef4 100644
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -18,7 +18,7 @@ from rsl_rl.runners import OnPolicyRunner
+ import genesis as gs
+ 
+ from go2_env import (Go2Env, FOOT_LINKS, GO2_TORQUE_LIMITS, GO2_DOF_VEL_LIMITS, GO2_JOINT_FRICTION, GO2_JOINT_DAMPING,
+-                     obs_noise_scales)
++                     GO2_MJCF_LOWER_LEG, obs_noise_scales)
+ from go2_commands import LIN_DEADZONE, ANG_DEADZONE  # [P1.1] same deadzone as at deployment
+ 
+ import subprocess, json, sys, torch
+@@ -142,11 +142,16 @@ def get_cfgs():
+         # with --joint-friction 0.2 --joint-damping 0.1 (and in unitree_mujoco): it had only learned lossless joints.
+         "joint_friction": GO2_JOINT_FRICTION,  # [Nm] 0.2
+         "joint_damping": GO2_JOINT_DAMPING,  # [Nm s/rad] 0.1
+-        # [S2R] contact spin and rolling resistance of go2.xml's feet (condim="6" friction="0.4 0.02 0.01"). Genesis
+-        # contacts are points by default: a turning robot pays nothing for twisting its stance feet, then turns at
+-        # half speed in unitree_mujoco (go2-p17h: 0.29 / 0.6 rad/s). Costs solver time; None turns a term off.
+-        "foot_torsional_friction": 0.02,  # [m] effective contact-patch radius
++        # [S2R] unitree_mujoco's contact and lower legs. Together (not one by one) they reproduce in Genesis what
++        # go2-p17h does in unitree_mujoco (bench, p17h: slow +0.11 / -0.10 m/s vs MuJoCo +0.12 / -0.10, yaw 0.21 vs
++        # 0.29 rad/s, step frequency 0.83 Hz in both, against 0.18 / -0.19 m/s, 0.54 rad/s, 1.22 Hz in plain Genesis).
++        # With Genesis' soft default friction (pyramidal cone, impratio 1) stance feet creep, the spin resistance with
++        # them, and p17h learned a gait that relies on it. Costs solver time; None turns a term off.
++        "foot_torsional_friction": 0.02,  # [m] go2.xml feet: condim="6" friction="0.4 0.02 0.01"
+         "foot_rolling_friction": 0.01,  # [m]
++        "friction_cone": "elliptic",  # go2.xml <option cone="elliptic" impratio="100"/>: feet hold, no creep
++        "impratio": 100.0,
++        "lower_leg_inertial": dict(GO2_MJCF_LOWER_LEG),  # go2.xml calf + foot: 0.241 kg, CoM 14.1 cm below the knee
+         # [P1.2] domain randomization (legged_gym / Isaac Lab defaults, widened where the plan says so)
+         "domain_rand": {
+             # [S2R] 0.5 -> 0.4: unitree_mujoco's feet (go2.xml friction="0.4 ...", priority 1) were outside the range

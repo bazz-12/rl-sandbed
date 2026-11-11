@@ -1,0 +1,100 @@
+diff --git a/go2_env.py b/go2_env.py
+index 4afc438..1298ec6 100644
+--- a/go2_env.py
++++ b/go2_env.py
+@@ -117,6 +117,10 @@ class Go2Env:
+                 batch_links_info=bool({"added_mass_range", "com_shift_range"} & self.domain_rand.keys()),
+                 # [S2R] per-env joint friction / damping (domain randomization) need batched dof info
+                 batch_dofs_info=self._joint_losses_randomized(),
++                # [S2R] spin and rolling resistance at contacts (MuJoCo condim 6). Off unless env_cfg sets the foot
++                # coefficients; costs solver time on every contact.
++                enable_torsional_friction=self._contact_spin_friction(),
++                enable_rolling_friction=self.env_cfg.get("foot_rolling_friction") is not None,
+             ),
+             vis_options=gs.options.VisOptions(
+                 rendered_envs_idx=[0],
+@@ -151,6 +155,7 @@ class Go2Env:
+                 # [P1.2] rotor inertia added to every joint (Genesis' default for URDF is 0.1)
+                 default_armature=self.env_cfg.get("armature", PHYSICS_DEFAULTS["armature"]),
+             ),
++            **self._robot_material(),  # [S2R] torsional / rolling friction coefficients, when set
+         )
+ 
+         self._add_extra_entities()  # [P1.6] hook: cameras etc. must be added before build (go2_teleop.py --record)
+@@ -350,6 +355,23 @@ class Go2Env:
+     def _add_extra_entities(self):
+         """[P1.6] Called just before scene.build(): a subclass adds cameras or objects here (go2_teleop.py)."""
+ 
++    def _contact_spin_friction(self):
++        """[S2R] True when env_cfg asks for torsional friction at the robot's contacts (needed for rolling too)."""
++        return self.env_cfg.get("foot_torsional_friction") is not None or \
++            self.env_cfg.get("foot_rolling_friction") is not None
++
++    def _robot_material(self):
++        """[S2R] unitree_mujoco's go2.xml feet use condim="6" friction="0.4 0.02 0.01": besides sliding friction, a foot
++        resists spinning about the contact normal (0.02 m) and rolling (0.01 m). A turn in place twists every stance
++        foot by the yaw angle, so in MuJoCo (and on rubber feet) yawing costs torque that a point contact in Genesis
++        never asks for. Set on the whole robot entity (only the feet touch the ground in normal walking)."""
++        if not self._contact_spin_friction():
++            return {}
++        material = {"friction_torsional": self.env_cfg.get("foot_torsional_friction") or 0.0}
++        if self.env_cfg.get("foot_rolling_friction") is not None:
++            material["friction_rolling"] = self.env_cfg["foot_rolling_friction"]
++        return {"material": gs.materials.Rigid(**material)}
++
+     def _joint_losses_randomized(self):
+         """[S2R] True when joint friction or damping is sampled per env (needs batched dof info)."""
+         return bool({"joint_friction_range", "joint_damping_range"} & self.domain_rand.keys())
+diff --git a/go2_fsm_sim.py b/go2_fsm_sim.py
+index 5190dbd..3c028e8 100644
+--- a/go2_fsm_sim.py
++++ b/go2_fsm_sim.py
+@@ -176,6 +176,11 @@ def main():
+     p.add_argument("--joint-damping", type=float, default=None, help="viscous joint damping [Nm s/rad] (go2.xml: 0.1)")
+     p.add_argument("--joint-friction", type=float, default=None, help="joint Coulomb friction [Nm] (go2.xml: 0.2)")
+     p.add_argument("--armature", type=float, default=None, help="rotor inertia [kg m2] (training: env_cfg armature)")
++    # [S2R] go2.xml feet: condim="6" friction="0.4 0.02 0.01". Default: the run's own (none before [S2R] runs)
++    p.add_argument("--foot-torsion", type=float, default=None, metavar="M",
++                   help="contact spin resistance [m] (go2.xml: 0.02; 0 = point contact, rolling off too)")
++    p.add_argument("--foot-rolling", type=float, default=None, metavar="M",
++                   help="contact rolling resistance [m] (go2.xml: 0.01; 0 = off), needs torsion")
+     p.add_argument("--friction", type=float, default=None, metavar="MU",
+                    help="ground-foot friction (default 1.0; unitree_mujoco's feet: 0.4)")
+     p.add_argument("--log", nargs="?", const="", default=None, metavar="FILE",
+@@ -200,6 +205,11 @@ def main():
+                    terminate_after_contacts_on=[], episode_length_s=1e6, recovery={})
+     if args.armature is not None:  # [S2R]
+         env_cfg["armature"] = args.armature
++    for key, value in (("foot_torsional_friction", args.foot_torsion), ("foot_rolling_friction", args.foot_rolling)):
++        if value is not None:  # [S2R] 0 switches the term off (it is a scene option: set before the env is built)
++            env_cfg[key] = value if value > 0 else None
++    if args.foot_torsion == 0 and args.foot_rolling is None:
++        env_cfg["foot_rolling_friction"] = None  # --foot-torsion 0 alone = point contacts, as in Genesis by default
+     env = Go2Env(args.num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=args.viewer)
+     N = env.num_envs
+     # [S2R] joint losses (unitree_mujoco's go2.xml: damping 0.1, friction 0.2)
+@@ -275,6 +285,8 @@ def main():
+                   # [S2R] the values in effect (the run's own unless overridden), not only the flags
+                   "joint_damping": float(env.joint_damping[0, 0]), "joint_friction": float(env.joint_friction[0, 0]),
+                   "armature": env_cfg.get("armature"),
++                  "foot_torsional_friction": env_cfg.get("foot_torsional_friction"),  # [S2R]
++                  "foot_rolling_friction": env_cfg.get("foot_rolling_friction"),
+                   "friction": float(env.friction[0]), "added_mass": float(env.added_mass[0])})
+     # [S2R] feet in the log's leg order (FR, FL, RR, RL, as the joints and the SDK), not Go2Env's FOOT_LINKS order
+     feet = [env.robot.get_link(f"{leg}_foot").idx_local for leg in ("FR", "FL", "RR", "RL")]
+diff --git a/go2_train.py b/go2_train.py
+index 74ff2a4..f47eac0 100644
+--- a/go2_train.py
++++ b/go2_train.py
+@@ -142,6 +142,11 @@ def get_cfgs():
+         # with --joint-friction 0.2 --joint-damping 0.1 (and in unitree_mujoco): it had only learned lossless joints.
+         "joint_friction": GO2_JOINT_FRICTION,  # [Nm] 0.2
+         "joint_damping": GO2_JOINT_DAMPING,  # [Nm s/rad] 0.1
++        # [S2R] contact spin and rolling resistance of go2.xml's feet (condim="6" friction="0.4 0.02 0.01"). Genesis
++        # contacts are points by default: a turning robot pays nothing for twisting its stance feet, then turns at
++        # half speed in unitree_mujoco (go2-p17h: 0.29 / 0.6 rad/s). Costs solver time; None turns a term off.
++        "foot_torsional_friction": 0.02,  # [m] effective contact-patch radius
++        "foot_rolling_friction": 0.01,  # [m]
+         # [P1.2] domain randomization (legged_gym / Isaac Lab defaults, widened where the plan says so)
+         "domain_rand": {
+             # [S2R] 0.5 -> 0.4: unitree_mujoco's feet (go2.xml friction="0.4 ...", priority 1) were outside the range

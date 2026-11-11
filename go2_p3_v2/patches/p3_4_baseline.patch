@@ -1,0 +1,2028 @@
+diff -ruN a/CHANGES.md b/CHANGES.md
+--- a/CHANGES.md	2026-11-05 08:17:21.694325711 +0900
++++ b/CHANGES.md	2026-11-05 08:17:21.696326375 +0900
+@@ -1,6 +1,6 @@
+-# Go2 locomotion: P1.1 to P1.6 and P3.1 to P3.3 changes
++# Go2 locomotion: P1.1 to P1.6 and P3.1 to P3.4 changes
+ 
+-**P3.1** (curriculum training on terrain), **P3.2** (foot slip from ground truth, and the foot-slip penalty decision) and **P3.3** (privileged observations for the critic and a teacher) are the sections after P1.6. They build on the P2 code (P2 is documented in `TEST_AND_TINKER_P2.md`), and their companion guide is `TEST_AND_TINKER_P3.md`, which also holds the plan for P3.4.
++**P3.1** (curriculum training on terrain), **P3.2** (foot slip from ground truth, and the foot-slip penalty decision), **P3.3** (privileged observations for the critic and a teacher) and **P3.4** (Baseline v1.0: provenance, checked ONNX export, harness report, config card, git tag) are the sections after P1.6. They build on the P2 code (P2 is documented in `TEST_AND_TINKER_P2.md`), and their companion guide is `TEST_AND_TINKER_P3.md`.
+ 
+ Base: your `go2_env.py`, `go2_train.py`, `go2_eval.py` and `go2_metrics.py` (Genesis 1.4.2, rsl-rl-lib 5.5.1).
+ 
+@@ -931,6 +931,117 @@
+ - Distillation of a student from a teacher (not implemented).
+ - The robot (nothing changes there: the deployed actor reads the same 45 inputs).
+ 
++## P3.4: Baseline v1.0 (final run, config card, checked export, harness report, git tag)
++
++P3.4 builds on P3.3 and adds no training feature: a run with the same flags trains as before, bit for bit. Two behaviours change on purpose: `--set` given several times now adds up (until P3.3 the last `--set` silently replaced the others), and the run's manifest is written even without git. New files: `go2_provenance.py`, `go2_report.py`, `go2_card.py`. Every change is tagged `[P3.4]`. The companion guide is section 7 of **`TEST_AND_TINKER_P3.md`**.
++
++In the bundle, `p3_4/` is the complete, runnable snapshot (P3.1 to P3.4). `patches/p3_4_baseline.patch` holds P3.4 against the P3.3 files: apply `p3_1_curriculum.patch`, then `p3_2_3_slip_privileged.patch`, then this one.
++
++```
++python go2_decide.py flags                                     # the go2_train.py flags of the KEEP decisions
++V1FLAGS="--terrain --cmd-curriculum --set env.reset_forward=True $(python go2_decide.py flags)"
++python go2_train.py -e go2-v1.0 $BASE $V1FLAGS                # $BASE: your P2 options; from a clean, committed tree
++python go2_export.py -e go2-v1.0 --ckpt 1999 --onnx            # policy.pt + policy.onnx, both checked
++python go2_report.py -e go2-v1.0 --ckpt 1999 --gate ~/unitree_mujoco   # the harness report (+ the gate suite)
++python go2_card.py -e go2-v1.0 --ckpt 1999 --name "Baseline v1.0" --freeze baselines/v1.0 --strict
++python go2_report.py -e go2-v2 --ckpt 1999 --ref go2-v1.0      # later: a candidate against v1.0
++```
++
++### What P3.4 does, and why
++
++1. **Provenance: what trained the policy.** `go2_train.py` writes `logs/<exp>/manifest.json` when a run starts. P3.4 completes it:
++   - git commit, dirty flag (tracked files), untracked `.py` files;
++   - the command line (`argv`) and every argument, host, GPU, package versions, start time;
++   - a **code fingerprint**: the sha256 of every `.py` file of the code folder.
++
++   Until P3.3, a failing `git` call skipped the whole manifest; now its git fields are `null`. A dirty tree also leaves `git_diff.patch` and a warning at the start; untracked `.py` files get a warning too. Git alone says which commit a run started from, not whether a file was edited afterwards. The fingerprint does: `python go2_provenance.py logs/<exp>` and the card compare it with the files as they are now.
++2. **`--set` adds up.** It is now `nargs="+", action="extend"`. Before, argparse kept only the last `--set` list: `--set env.reset_forward=True --set reward.foot_slip_mode=tangent` silently dropped the first. The v1.0 command line combines its own `--set` with the flags of the decisions, so this had to be fixed first.
++3. **The checked export** (`go2_export.py --onnx`).
++   - `policy.onnx`: rsl_rl 5.5.1 `export_policy_to_onnx()`, opset 18. MLP: input `obs` [1, D] → `actions` [1, 12]. Recurrent: + `h_in` (+ `c_in` for an LSTM) → `h_out` (`c_out`), which the caller carries from call to call and zeroes at a reset.
++   - One file: torch 2.15 writes the weights to a separate `policy.onnx.data` by default; `go2_export.py` folds them back into `policy.onnx`, so the file is self-contained and its sha256 covers the weights.
++   - Both exports are checked against the training policy (deterministic mean), one observation at a time as on the robot, on two input sets: 100 random observations (the P1.6 check), and the observations of a rollout of the training policy in the nominal world (8 envs × 200 steps, commands resampled as in training), each env's sequence replayed with its resets.
++   - Any difference above `EXPORT_TOL` = 1e-4 stops the script. Float32 round-off is about 1e-7.
++   - `exported/export_check.json` records every error, the sha256 of the files and the ONNX inputs and outputs. `deploy_cfg.json` → `source` gets the hashes, the errors, the git commit and the export time.
++   - An export without `--onnx` deletes a stale `policy.onnx` (and `policy.onnx.data`), so the folder never holds two different networks.
++   - Why the rollout check: random observations miss the states the policy really meets, and a recurrent export's state handling (carry, reset) only shows on sequences.
++   - Why ONNX: runtimes without PyTorch (onnxruntime in C++, TensorRT); and torch 2.15 warns that `torch.jit.load` is deprecated. `policy.pt` still loads, and `go2_fsm.py` still runs it.
++4. **The harness report** (`go2_report.py`). One command runs the standard set as `go2_metrics.py` subprocesses, and optionally the unitree_mujoco gate suite:
++   - worlds: `flat`, `flat_dr`, `grid` (the run's tiles), `grid_unseen` (new random tiles), slopes ±10°, ±20°, ±25°;
++   - outputs in `logs/<exp>/report/`: `REPORT.md`, `summary.json` (strict JSON: n/a is `null`), `plots/`, one log per world;
++   - headline numbers: per key flat command (falls, lin_err, yaw_err, vx_meas, CoT, slip_v); per tile type the **frontier** (the last level of the run of levels, from the lowest, with through ≥ 80 %); on each slope vx_meas, through and falls at 0.5 m/s;
++   - `--ref EXP` adds every headline number of both runs, the change and which way is better: the same command measures later candidates against v1.0. It also takes a frozen baseline folder (`--ref baselines/v1.0`), and it is read before the evaluation starts;
++   - `--collect` rebuilds the report from existing CSVs, `--skip-existing` runs only the missing worlds. The envs per bin are read from the CSVs, so a collected report states what was measured.
++5. **The config card** (`go2_card.py` → `logs/<exp>/CONFIG_CARD.md`, about 60 lines). It reads the run's own files only.
++   - A freeze checklist opens it, one line per condition, `ok` or `NO` with the reason: code committed, code unchanged, export checked, report complete, decision slip, decision critic, reset_forward.
++   - "code committed" also fails on untracked `.py` files (a checkout of the commit would lack them). "report complete" also asks for every tile type and level the run trained on, and 20 envs per bin (`REPORT_MIN_REPS`): a quick report cannot pass for the baseline's.
++   - Then: identity and training (commit, versions, exact command, PPO, networks), world, interface and rewards, results, export, decisions, how to reproduce.
++   - `--freeze DIR` copies the card and the small records into a git-tracked folder and prints the git and `gh` commands; `--strict` exits 1 unless every line is `ok`, and then freezes nothing.
++6. **The decisions feed the command line.** `python go2_decide.py flags` prints the flags of the KEEP records in `decisions/`, and says on stderr what each record decided (or that it is missing). The card checks that the run follows the records.
++7. **Tag and release.** `logs/` and `*.pt` are git-ignored. So the tag carries the records (`baselines/v1.0/`: card, deploy config, export check, report, decisions, manifest, configs), and a GitHub release on the tag carries the binaries (policy files, checkpoint, `terrain.npz`) with the card as notes. `gh release create --verify-tag` attaches the release to the pushed tag; without it, gh would create a missing tag from the default branch.
++
++### What changed, per file
++
++**go2_provenance.py** (new; standard library only)
++- `sha256_file()`, `code_fingerprint()`, `git_info()`, `environment()`, `now()`, `compare_code()`.
++- `python go2_provenance.py` prints the git state, the package versions and the code fingerprint; `python go2_provenance.py logs/<exp>` compares the run's fingerprint with the files now.
++
++**go2_train.py**
++- `run_manifest(log_dir, cfgs, args)`: the fields above, `git_diff.patch`, the two warnings.
++- `--set` repeatable (`action="extend"`).
++- The `subprocess` import is gone (the git calls moved to `go2_provenance.py`).
++
++**go2_export.py**
++- `--onnx`, `--check-steps` (200), `--check-envs` (8); `EXPORT_TOL` = 1e-4.
++- `OnnxPolicy` (an onnxruntime session that carries the recurrent state), `single_file_onnx()`, `rollout_observations()`, `sequence_error()`.
++- `export_check.json`; `deploy_cfg["source"]`: `git_commit`, `git_dirty`, `exported`, `sha256`, `max_abs_error_vs_training_policy`.
++- The env is built with `--check-envs` envs (the deploy config does not depend on their number). The teacher refusal of P3.3 is unchanged.
++
++**go2_report.py** (new; Genesis runs only in its `go2_metrics.py` subprocesses)
++- `WORLDS`, `SLOPES`, `FLAT_BINS`, `FLAT_METRICS`, `SLOPE_METRICS`, `FRONTIER_THROUGH`, `HEADLINE_BETTER`.
++- Options: `--reps`, `--seed`, `--worlds`, `--grid-types`, `--grid-levels`, `--cpu`, `--collect`, `--skip-existing`, `--gate`, `--gate-summary`, `--ref` (a run name, a run folder or a frozen `baselines/` folder).
++
++**go2_card.py** (new; no Genesis)
++- `STANDARD_WORLDS`, `RELEASE_FILES`, `REPORT_MIN_REPS`; `read_decision()`, `decision_matches()`, `switches()` (the flags a run's configs imply, for manifests from before P3.4).
++- Options: `--name`, `--decisions`, `--freeze DIR`, `--tag`, `--strict`, `--log_dir`.
++
++**go2_decide.py**
++- Rule `flags`; option `--decisions`; `--off`, `--on` and `--ckpt` are required for `slip` and `critic` only.
++
++Unchanged by P3.4: `go2_env.py`, `go2_metrics.py` and the deploy side. `go2_fsm.py` reads `deploy_cfg.json` as before; the new keys under `source` are records only.
++
++### rsl_rl 5.5.1 and torch 2.15 facts behind the P3.4 code
++
++1. `OnPolicyRunner.export_policy_to_onnx()` runs `torch.onnx.export(..., opset_version=18)` on the model's `as_onnx()` wrapper: `_OnnxMLPModel` (`obs` → `actions`) or `_OnnxRNNModel` (+ `h_in`, `c_in` → `h_out`, `c_out`), batch 1.
++2. In torch 2.15, `torch.onnx.export` defaults to `dynamo=True` (since 2.9: the `torch.export`-based exporter, which imports `onnxscript`) and to `external_data=True` (weights in a separate `.data` file). rsl_rl passes neither.
++3. torch 2.15 prints a `FutureWarning` on `torch.jit.load`: "`torch.jit.load` is deprecated. Please switch to `torch.export`." The PyTorch 2.8 release notes draft calls TorchScript "nearing end-of-life".
++4. rsl_rl's logger writes `logs/<exp>/git/<repo>.diff` only for repositories registered with `runner.add_git_repo_to_log()`. By default that is rsl_rl itself, which pip installs outside any git repository ("Could not find git repository ... Skipping."), so the folder stays empty. The manifest and `git_diff.patch` record our code instead.
++
++### Checked here (P3.4)
++
++- Default flags: bit-identical networks and optimizer states with the P2 code (68 tensors; 3 iterations, CPU, 32 envs, seed 1).
++- In a scratch git repository:
++  - a clean run's manifest: commit, dirty False, no untracked file, `argv`, every argument, 27 file hashes; two `--set` both applied (start-up lines and configs);
++  - `go2_provenance.py logs/<exp>`: "code unchanged since training", then "changed since training: ['go2_metrics.py']" after an edit;
++  - a dirty run: the warning, `git_diff.patch` with the edit, `git_dirty` True; an untracked `scratch.py`: the warning, and "code committed" NO on the card;
++  - outside git: the manifest with `null` git fields.
++- `go2_export.py --onnx` (CPU), max |export − policy| on random observations / on the rollout:
++  - MLP with a privileged critic (8 envs × 200 steps): TorchScript 0 / 1.3e-7, ONNX 1.8e-7 / 1.2e-7;
++  - LSTM (4 × 100): TorchScript 0 / 6.0e-8, ONNX 1.2e-7 / 1.5e-7, inputs `obs` [1, 45], `h_in` [1, 1, 256], `c_in` [1, 1, 256]; GRU: TorchScript 0 / 6.0e-8, ONNX 1.2e-7 / 1.2e-7, inputs `obs`, `h_in`;
++  - each time one self-contained `policy.onnx` (weights folded in, no `.data` file), and the check runs on that file;
++  - a tolerance of 1e-12 stops the script with its message, writes `passed: false`, and the card says NO;
++  - an export without `--onnx` removes an earlier `policy.onnx` (and a `policy.onnx.data`);
++  - `test_go2_deploy.py --policy` passes on the new export.
++- `go2_report.py` on a smoke run (CPU, `--reps 2`, tile subsets): 6 worlds in 250 s (32 to 49 s each); `--collect`; `--ref` with a run name, a run folder, a frozen folder and the file itself (falls in percentage points), an unknown `--ref` refused before any evaluation; missing worlds listed; `summary.json` loads as strict JSON.
++- `go2_card.py`: runs from before P3.4 ("Command: unknown", the implied switches); a clean git run; KEEP, DROP and missing decision records, matching and not; `--freeze` (copies and printed commands); `--strict` (exit 1, nothing frozen); "report complete" NO for a quick report (2 envs per bin, tile subsets, missing slopes) and ok for a complete one.
++- `go2_decide.py flags` with KEEP records, DROP records and none.
++- The dry run of `TEST_AND_TINKER_P3.md` 7.2, as written, in a scratch git repository (CPU): training, export (errors ≤ 2.7e-7), deploy tests, the 10-world report in about 7 min, the card (code committed, code unchanged, export checked and reset_forward ok; report complete and the decisions NO, as expected there), `--freeze`, and `--strict` exiting 1.
++- `py_compile` and pyflakes on every P3.4 file.
++
++**Not checked:**
++- The real v1.0 run, its report and the gate suite (your GPU, unitree_mujoco).
++- `git push` and `gh release create` (the card prints them; nothing is pushed from here).
++- `policy.onnx` in a C++ runtime or on the robot computer.
++
+ ## Rewards and terminations per phase
+ 
+ P1.4 to P1.6 keep every P1.3 value; their additions are the last rows.
+@@ -969,8 +1080,9 @@
+ - **Student distillation.** P3.3 trains a privileged teacher (`--privileged teacher`); distilling a proprioceptive student from it (rsl_rl 5.5.1 `Distillation`, observation sets `student` / `teacher`) is not implemented.
+ - **Torque–speed limit.** A DC-motor curve (Isaac Lab `DCMotor`) instead of a flat clip.
+ - **System identification on your Go2.** Identify armature, joint friction and latency. Menagerie also uses damping and frictionloss values that are not adopted here.
+-- **ONNX export** (rsl_rl `export_policy_to_onnx`). Planned in P3.4 (`TEST_AND_TINKER_P3.md`, section 7), with a check against the training policy.
+-- **Reset with forward kinematics on flat ground** (P3.1 found the kick, see "Fixes to earlier phases" in the P3.1 section). Suggested for the v1.0 freeze: `--set env.reset_forward=True`.
++- **An onnxruntime deploy path.** P3.4 exports and checks `policy.onnx`; `go2_fsm.py` still runs `policy.pt`. A C++ runtime (onnxruntime, TensorRT) would drop the PyTorch dependency on the robot computer.
++- **Seed statistics in the report.** `go2_report.py --ref` compares two runs; the spread over the v1.0 seeds is collected by hand (`TEST_AND_TINKER_P3.md` 7.9).
++- **Reset with forward kinematics as the default** (P3.1 found the kick on flat ground, see "Fixes to earlier phases" in the P3.1 section). The v1.0 command line sets `--set env.reset_forward=True` and the card checks it; the default stays off, so runs with default flags keep training bit for bit as in P2.
+ - **Stairs.** P3.1's tiles are blind-friendly (slopes, rough, waves, low obstacles). Stairs need a perception input, or a student distilled from a teacher with the height scan (P3.3 has the scan entry, not the stair tiles).
+ - **A Genesis ↔ DDS bridge**, to run `go2_deploy_sdk2.py` against Genesis rather than unitree_mujoco.
+ - **The rest of walk-these-ways' command space** (gait frequency, phase, foot swing height, stance width, body pitch). It needs gait-phase observations and their rewards (e.g. the Raibert heuristic), so it is more than one more command.
+@@ -1021,3 +1133,9 @@
+   - Lee et al., [Learning Quadrupedal Locomotion over Challenging Terrain](https://arxiv.org/abs/2010.11251), Science Robotics 2020 (teacher–student)
+   - legged_gym [legged_robot_config.py](https://github.com/leggedrobotics/legged_gym/blob/master/legged_gym/envs/base/legged_robot_config.py) (`num_privileged_obs`, `measured_points_x` / `_y`, `height_measurements` 5.0) and [legged_robot.py](https://github.com/leggedrobotics/legged_gym/blob/master/legged_gym/envs/base/legged_robot.py) (`compute_observations` heights, `_get_heights`, `quat_apply_yaw`)
+   - rsl_rl 5.5.1 (installed package): `utils/utils.py` (`resolve_obs_groups`), `models/mlp_model.py` (`get_latent`, `obs_normalization`), `algorithms/ppo.py` (`construct_algorithm`), `algorithms/distillation.py` (`student` / `teacher`), `extensions/symmetry.py` (`augment_batch`, `compute_loss`), `storage/rollout_storage.py`, `runners/on_policy_runner.py` (`export_policy_to_jit`)
++- P3.4:
++  - rsl_rl 5.5.1 (installed package): `runners/on_policy_runner.py` (`export_policy_to_jit`, `export_policy_to_onnx`, `add_git_repo_to_log`), `models/mlp_model.py` and `models/rnn_model.py` (`as_onnx`, `_OnnxMLPModel`, `_OnnxRNNModel`: input and output names), `utils/logger.py` (`_store_code_state`)
++  - torch 2.15 (installed package): `onnx/__init__.py` (`export`: `dynamo=True` and `external_data=True` by default, "versionchanged 2.9"), `onnx/_internal/exporter/_core.py` (imports `onnxscript`), `jit/_serialization.py` (`torch.jit.load` FutureWarning)
++  - PyTorch 2.8 release notes draft, [pytorch-labs/torch-release-notes#17](https://github.com/pytorch-labs/torch-release-notes/pull/17) (`dynamo=True` default from 2.9, TorchScript "nearing end-of-life")
++  - ONNX Runtime [Python API](https://onnxruntime.ai/docs/api/python/api_summary.html) (`InferenceSession`, `get_inputs`, `run`); onnx 1.23.2 (installed package) `external_data_helper.py` (`load_external_data_for_tensor` reads the `.data` file and marks the tensor inline)
++  - GitHub CLI [gh release create](https://cli.github.com/manual/gh_release_create) (assets, `--title`, `--notes-file`, `--verify-tag`)
+diff -ruN a/TEST_AND_TINKER_P3.md b/TEST_AND_TINKER_P3.md
+--- a/TEST_AND_TINKER_P3.md	2026-11-05 08:17:21.694386475 +0900
++++ b/TEST_AND_TINKER_P3.md	2026-11-05 08:17:21.696387592 +0900
+@@ -1,9 +1,9 @@
+ # P3 · Terrain, curricula and the v1.0 baseline: test & tinker guide
+ 
+ Companion to the P3 code, in the format of `TEST_AND_TINKER_P2.md`. **P3.1 (curriculum training), P3.2 (foot slip and
+-the foot-slip penalty decision) and P3.3 (privileged observations) are implemented**: they were checked on CPU here and
+-are described in full (sections 4 to 6). **P3.4 is planned**: section 7 says what it will change, file by file, and
+-why. It gets the same full treatment when we implement it.
++the foot-slip penalty decision), P3.3 (privileged observations) and P3.4 (the Baseline v1.0 freeze: provenance, checked
++ONNX export, harness report, config card, git tag) are implemented**: they were checked on CPU here and are described
++in full (sections 4 to 7).
+ 
+ Each part section covers:
+ - what the code does and why;
+@@ -17,12 +17,12 @@
+ 
+ Contents
+ 1. Files and install
+-2. Change map: what each part modifies, file by file (P3.1 to P3.3 done, P3.4 planned)
++2. Change map: what each part modifies, file by file (P3.1 to P3.4)
+ 3. Workflow and conventions (base command, run names, knobs, evaluation worlds, comparing, TensorBoard, visual checks)
+ 4. P3.1 Curriculum training: terrain tiles, terrain curriculum, command curriculum, slopes up to 25°
+ 5. P3.2 Foot slip from ground truth, and the foot-slip penalty decision
+ 6. P3.3 Privileged observations for the critic and a teacher
+-7. P3.4 Baseline v1.0: final run, config card, checked export, harness report, git tag (plan)
++7. P3.4 Baseline v1.0: final run, config card, checked export, harness report, git tag
+ 8. Reference: configuration keys and constants
+ 9. Reference: metrics glossary (P3)
+ 10. Troubleshooting
+@@ -35,13 +35,16 @@
+ | File | Status vs P2 | Part |
+ |---|---|---|
+ | `go2_terrain.py` | **new** | P3.1: tile grid, tilted plane, ground-height lookup, terrain cache, preview, self-checks (numpy + torch, no Genesis). P3.2: ground normals, `contact_slip_speed()`, the contact-normal check |
+-| `go2_decide.py` | **new** | P3.2 / P3.3: A/B decisions from the harness by fixed rules; writes `decisions/<rule>.md` (no Genesis) |
++| `go2_decide.py` | **new** | P3.2 / P3.3: A/B decisions from the harness by fixed rules; writes `decisions/<rule>.md` (no Genesis). P3.4: `flags` prints the flags of the KEEP records |
++| `go2_provenance.py` | **new** | P3.4: git state, code fingerprint, file hashes, versions (standard library only) |
++| `go2_report.py` | **new** | P3.4: the harness report: the standard evaluation set in one command, `report/REPORT.md` + `summary.json`, `--ref` |
++| `go2_card.py` | **new** | P3.4: the one-page config card with its freeze checklist; `--freeze` into `baselines/`, the git tag and release commands |
+ | `go2_env.py` | modified | P3.1: ground entity, spawning, terrain and command curricula, ground-relative rewards, tilt limits per env, terrain build fix, resets with forward kinematics on terrain. P3.2: per-foot slip, `foot_slip` reward. P3.3: `privileged` observation group |
+-| `go2_train.py` | modified | P3.1: `--terrain`, `--cmd-curriculum`, `--init-from`, `CMD_CURRICULUM`, `TERRAIN_TILT_MARGIN_DEG`, P3 summary block, `terrain.npz`, curriculum state in checkpoints. P3.2: `--foot-slip`. P3.3: `--privileged`, `--privileged-entries` |
++| `go2_train.py` | modified | P3.1: `--terrain`, `--cmd-curriculum`, `--init-from`, `CMD_CURRICULUM`, `TERRAIN_TILT_MARGIN_DEG`, P3 summary block, `terrain.npz`, curriculum state in checkpoints. P3.2: `--foot-slip`. P3.3: `--privileged`, `--privileged-entries`. P3.4: full `manifest.json` (code fingerprint, argv, untracked files), `git_diff.patch`, repeatable `--set` |
+ | `go2_metrics.py` | modified | P3.1: `--terrain grid`, `--slope`, Progress table, success heat map, ground-relative heights. P3.2: slip along the ground, `slip_share`, `pen_xy` / `pen_t`, "Foot slip per foot" table. P3.3: `sym_err` over every group |
+ | `go2_compare.py` | modified | P3.1: tile rows (`--rows "hill 9"`), `--preset terrain`. P3.2: `--preset slip` |
+ | `go2_feet_plot.py` | modified | P3.1: clearance above the ground, `--tile TYPE LEVEL`. P3.2: speed along the ground |
+-| `go2_export.py` | modified | P3.1: deploys the command ranges the curriculum reached; `training_terrain` record. P3.3: refuses teacher runs; records the critic's entries |
++| `go2_export.py` | modified | P3.1: deploys the command ranges the curriculum reached; `training_terrain` record. P3.3: refuses teacher runs; records the critic's entries. P3.4: `--onnx` (one self-contained file), both exports checked on random and rollout observations, `export_check.json`, hashes |
+ | `go2_symmetry.py` | modified | P3.3: mirror of every privileged entry; `--privileged`, `--slope` checks |
+ | `go2_teleop.py` | modified | P3.1: `--terrain`, `--tile`, `--slope`, J / K / U keys, reached command ranges |
+ | `go2_fsm_sim.py` | modified | P3.1: `--slope`; flat ground otherwise (also with `--dr`) |
+@@ -49,7 +52,8 @@
+ 
+ - Put `go2_terrain.py` next to the other scripts. `go2_env.py` imports it, so every script that builds an env needs
+   it, even on flat ground.
+-- No new package. `go2_terrain.py` uses numpy and torch; `matplotlib` only for the preview.
++- No new package for training. `go2_terrain.py` uses numpy and torch; `matplotlib` only for the preview. [P3.4]
++  `go2_export.py --onnx` needs `pip install onnx onnxscript onnxruntime`.
+ - **Terrain cache**: generated grids are stored in `~/.cache/go2_terrain/` (set `GO2_TERRAIN_CACHE` to move it), one
+   `.npz` per configuration. Generating the default grid takes well under a second, so the cache only saves time. Delete the
+   folder whenever you like.
+@@ -61,9 +65,9 @@
+ - Old runs (P1, P2) still load and evaluate. Their checkpoints have no curriculum state; the scripts say so and
+   carry on.
+ - Without the P3 flags, a run is exactly your P2 configuration: same weights bit for bit (checked, see `CHANGES.md`).
+-- Markers are `[P3.1]`, `[P3.2]` and `[P3.3]`: `grep -n "\[P3" *.py` lists every change.
++- Markers are `[P3.1]` to `[P3.4]`: `grep -n "\[P3" *.py` lists every change.
+ - `go2_decide.py` writes its decision records to `decisions/` at the top of the repository. Commit them: `logs/` is
+-  git-ignored, `decisions/` is not.
++  git-ignored, `decisions/` is not. Likewise `go2_card.py --freeze` writes `baselines/<version>/` (P3.4).
+ 
+ Self-checks you can run any time (CPU):
+ 
+@@ -73,6 +77,7 @@
+ python go2_symmetry.py                    # the policy mirror (P2.3), worth running after any edit
+ python go2_symmetry.py --privileged --slope 10   # [P3.3] every privileged entry, on a slope
+ python test_go2_deploy.py                 # deploy side; add --policy logs/<exp>/exported for an export
++python go2_provenance.py                  # [P3.4] git state and package versions; + logs/<exp>: code changed since?
+ ```
+ 
+ ---
+@@ -119,14 +124,17 @@
+ | `go2_metrics.py` | `sym_err` mirrors every group the actor reads | Teachers in the harness. |
+ | `go2_decide.py` | Rule `critic` (TensorBoard curves + harness); `decisions/critic.md` | Same traceability as P3.2. |
+ 
+-### P3.4 Baseline v1.0 (planned; section 7)
++### P3.4 Baseline v1.0 (implemented; section 7)
+ 
+-| File | What will change | Why |
++| File | What changes | Why |
+ |---|---|---|
+-| `go2_card.py` (new) | Writes `logs/<exp>/CONFIG_CARD.md`: one page with commit, versions, flags, world, rewards, curricula, network, headline results, export hashes, decisions | One page that says exactly what v1.0 is. |
+-| `go2_export.py` | `--onnx`: rsl_rl `export_policy_to_onnx()` plus a check with onnxruntime against the training policy, also on recorded states; sha256 of the files | "Checked against the training model", for both TorchScript and ONNX. |
+-| `go2_report.py` (new) | Runs the standard evaluation set (flat, flat DR, own tiles, unseen tiles, slopes ±10/20/25) and collects one report | The harness report: the same numbers for every future comparison. |
+-| `runs.md`, git | Row for v1.0, annotated tag `baseline-v1.0`, release with the artifacts | `logs/` and `*.pt` are git-ignored, so the tag alone does not hold the policy. |
++| `go2_provenance.py` (new) | Git commit, dirty flag, untracked `.py` files; sha256 of every `.py` file (code fingerprint); package versions | Git says which commit a run started from, not whether a file changed afterwards; the fingerprint does. |
++| `go2_train.py` | Complete `manifest.json` (argv, arguments, host, GPU, fingerprint), also without git; `git_diff.patch` and warnings; `--set` repeatable | The card must say exactly what trained the policy; the v1.0 command line combines several `--set`. |
++| `go2_export.py` | `--onnx` (rsl_rl `export_policy_to_onnx`, weights folded into one file); both exports checked against the training policy on random and rollout observations; `export_check.json`; hashes in `deploy_cfg["source"]` | "Checked against the training model", for TorchScript and ONNX, on the states the policy meets. |
++| `go2_report.py` (new) | The standard set (flat, flat DR, own tiles, unseen tiles, slopes ±10/20/25, optional gate) in one command; `REPORT.md`, `summary.json`, plots; `--ref` | The harness report: the same numbers for every later comparison. |
++| `go2_card.py` (new) | `CONFIG_CARD.md` with a freeze checklist; `--freeze` into `baselines/`; prints the git tag and `gh release` commands | One page that says exactly what v1.0 is, and refuses a freeze that is not clean. |
++| `go2_decide.py` | `flags`: the flags of the KEEP records | The v1.0 command line is built from the decisions, and the card checks it. |
++| `baselines/v1.0/`, git, `runs.md` | Frozen records (tracked), annotated tag `baseline-v1.0`, a GitHub release with the binaries, the v1.0 row | `logs/` and `*.pt` are git-ignored, so the tag alone does not hold the policy. |
+ 
+ ---
+ 
+@@ -171,10 +179,14 @@
+      margin is not applied.
+ 5. **Foot slip** (P3.2): `--foot-slip [W]`; `--set reward.foot_slip_mode=tangent` (5.6).
+ 6. **Privileged observations** (P3.3): `--privileged critic|teacher`, `--privileged-entries ENTRY ...` (6.6).
+-7. **Constants**: `TERRAIN_DEFAULTS`, `GENERATOR_VERSION`, `FOOTPRINT_HALF`, `BODY_LENGTH` (`go2_terrain.py`);
++7. **Baseline tools** (P3.4): `go2_export.py --onnx --check-envs --check-steps`, `go2_report.py --reps --worlds --ref`,
++   `go2_card.py --name --freeze --strict` (7.7). `--set` may be given several times: the lists add up.
++8. **Constants**: `TERRAIN_DEFAULTS`, `GENERATOR_VERSION`, `FOOTPRINT_HALF`, `BODY_LENGTH` (`go2_terrain.py`);
+    `CMD_CURRICULUM`, `TERRAIN_TILT_MARGIN_DEG`, `FOOT_SLIP_WEIGHT`, `PRIVILEGED_DEFAULT` (`go2_train.py`);
+    `TERRAIN_FAST_BUILD`, `PRIVILEGED_SIZES`, `HEIGHT_SCAN_*` (`go2_env.py`); `THROUGH_FRAC`, `SLIP_SHARE_V`
+-   (`go2_metrics.py`); the decision thresholds (`go2_decide.py`).
++   (`go2_metrics.py`); the decision thresholds (`go2_decide.py`); `EXPORT_TOL` (`go2_export.py`); `WORLDS`,
++   `FRONTIER_THROUGH`, `FLAT_BINS` (`go2_report.py`); `STANDARD_WORLDS`, `REPORT_MIN_REPS`, `RELEASE_FILES`
++   (`go2_card.py`).
+ 
+ Every value ends up in `cfgs.pkl`. The start of the training log prints a `--- terrain, curricula, foot slip,
+ privileged observations (P3) ---` block under the P2 block. Read it before leaving a run overnight (examples in 4.2,
+@@ -215,6 +227,8 @@
+   into a decision (5.4, 6.4).
+ - As before, the first file is the reference and `~` means within 2 standard errors over the evaluation envs. Train
+   seeds vary more: confirm a difference on 2 seeds before writing it down.
++- [P3.4] `go2_report.py -e B --ckpt $CKPT --ref A` compares the headline numbers of two runs over the whole standard
++  set, with the direction of each (7.6); `go2_compare.py` stays the tool for row-by-row detail.
+ 
+ ### 3.5 TensorBoard
+ ```bash
+@@ -1197,66 +1211,284 @@
+ 
+ ---
+ 
+-## 7. P3.4 Baseline v1.0: final run, config card, checked export, harness report, git tag (plan)
++## 7. P3.4 Baseline v1.0: final run, config card, checked export, harness report, git tag
+ 
+-### 7.1 Goal
+-Freeze one policy as **Baseline v1.0**, the reference for everything after P3:
++Goal, from the plan: freeze one policy as **Baseline v1.0**, the reference for everything after P3:
+ - the final run, with the P3.1–P3.3 choices;
+ - a one-page config card;
+-- an export checked against the training model;
++- an export checked against the training model (TorchScript and ONNX);
+ - the harness report;
+ - a git tag.
+ 
+-### 7.2 The final run
++P3.4 adds tools, not training features: a run with the same flags trains as before, bit for bit (checked, see
++`CHANGES.md`).
++
++### 7.1 What the code does, and why
++
++#### 7.1.1 Provenance: what trained the policy (`go2_provenance.py`, `manifest.json`)
++`go2_train.py` writes `logs/<exp>/manifest.json` when a run starts. P3.4 completes it:
++- git commit, dirty flag (tracked files changed), untracked `.py` files (code a checkout of the commit would lack);
++- the command line (`argv`) and every argument, host, GPU, package versions, start time;
++- a **code fingerprint**: the sha256 of every `.py` file of the code folder.
++
++Changes in behaviour:
++- Until P3.3 the manifest was skipped entirely when a `git` call failed. Now the git fields are just `null`.
++- A dirty tree leaves `logs/<exp>/git_diff.patch` (what a checkout of the commit would lack) and a warning at the
++  start of training. Untracked `.py` files get a warning too.
++- `--set` can now be given several times; the lists add up. Until P3.3 a second `--set` silently replaced the first,
++  which mattered as soon as the decisions add their own `--set` (e.g. `reward.foot_slip_mode=tangent`) to
++  `--set env.reset_forward=True`.
++
++Why the fingerprint: git says which commit a run started from, not whether a file was edited after training.
++`go2_card.py` compares the fingerprint with the files as they are now; `python go2_provenance.py logs/<exp>` does the
++same by hand.
++
++The `git/` folder in every run is rsl_rl's: it stores a diff only for repositories registered with
++`runner.add_git_repo_to_log()`. By default that is rsl_rl itself, installed by pip outside any repository, so the folder
++stays empty and the log says `Could not find git repository in .../rsl_rl/__init__.py. Skipping.` (harmless). The
++manifest and `git_diff.patch` record your code instead.
++
++#### 7.1.2 The checked export (`go2_export.py --onnx`)
++- `policy.onnx`: rsl_rl 5.5.1 `export_policy_to_onnx()`, opset 18.
++  - MLP: input `obs` [1, D], output `actions` [1, 12].
++  - Recurrent: also `h_in` [layers, 1, hidden] (+ `c_in` for an LSTM) → `h_out` (`c_out`). The caller carries them
++    from call to call and zeroes them at a reset, as `reset()` does for the TorchScript export.
++  - **One file.** With torch 2.15 (dynamo exporter, the default since 2.9), `torch.onnx.export` writes the weights to
++    a separate `policy.onnx.data` (`external_data=True` is its default, and rsl_rl keeps it). `go2_export.py` folds
++    them back into `policy.onnx`, so the file is self-contained and its sha256 covers the weights.
++- Both files are checked against the training policy (deterministic mean), one observation at a time as on the robot,
++  on two input sets:
++  - 100 random observations, from a reset (the P1.6 check);
++  - **the observations the policy itself meets**: a rollout of the training policy in the nominal world, 8 envs × 200
++    steps (`--check-envs`, `--check-steps`), commands resampled as in training. Each env's sequence is replayed
++    through the export, with a reset wherever the env was reset.
++- Any difference above `EXPORT_TOL` (1e-4) stops the script. Measured here (MLP, LSTM, GRU, several exports): every
++  error below 3e-7, i.e. float32 round-off.
++- `exported/export_check.json`: every error, the sha256 of `policy.pt`, `policy.onnx` and `deploy_cfg.json`, the
++  ONNX inputs and outputs, the run's git commit. `deploy_cfg.json` → `source` gets the hashes, the errors, the commit
++  and the export time.
++- An export without `--onnx` deletes a stale `policy.onnx` (and `.data`), so the folder never holds two networks.
++- Why the rollout check: random observations miss the states the policy really meets, and a recurrent export's state
++  handling (carry, reset) only shows on sequences.
++- Why ONNX: runtimes without PyTorch (onnxruntime in C++, TensorRT); and torch 2.15 already warns that
++  `torch.jit.load` is deprecated. The robot side (`go2_fsm.py`) still runs `policy.pt`, which loads fine.
++
++#### 7.1.3 The harness report (`go2_report.py`)
++One command runs the standard evaluation set and collects one summary in `logs/<exp>/report/`.
++
++| World | `go2_metrics.py` | Headline numbers |
++|---|---|---|
++| `flat` | nominal world | per key command (0 0 0, 0.5 0 0, 1 0 0, −0.5 0 0, 0 0.3 0, 0 0 0.5): falls, lin_err, yaw_err, vx_meas, CoT, slip_v |
++| `flat_dr` | `--keep_dr --tag dr` | the same, under the training randomization |
++| `grid` | `--terrain grid` | per tile type: the **frontier**, through at the top level, falls; mean through |
++| `grid_unseen` | `--terrain grid --terrain_set seed=1 --tag unseen` | the same, on new random tiles |
++| `slope±10`, `±20`, `±25` | `--slope D` | at 0.5 m/s: vx_meas, lin_err, through, falls, CoT, slip_v; standing: falls, creep |
++| gate (optional) | `go2_sim_suite.py --suite gate` | runs as expected (needs unitree_mujoco and an export) |
++
++- **Frontier** = the last level of the run of levels, from the lowest, with `through` ≥ 80 % (`FRONTIER_THROUGH`).
++  A type that fails its lowest level has no frontier ("none" in the card, −1 in the console and in the headline).
++- Each `go2_metrics.py` runs as a subprocess with its own Genesis; its output goes to `report/logs/<world>.log`.
++- Outputs: `REPORT.md` (tables), `summary.json` (everything, plus the headline numbers; strict JSON, n/a is `null`),
++  `plots/` (heat maps, gait and spectra plots).
++- `--ref EXP` adds a table "Against EXP": every headline number of both runs, the change and which way is better. The
++  same command then measures every later candidate against v1.0.
++- `--collect` rebuilds the report from existing CSVs; `--skip-existing` evaluates only the missing worlds. The envs
++  per bin are read from the CSVs (the denominator of `falls`), so a collected report states what was measured.
++- Time: 32 to 49 s per world on 2 CPU cores here, with `--reps 2` and tile subsets. On your GPU with the default
++  `--reps 20` I would expect 10–20 min for the whole set (not measured).
++
++#### 7.1.4 The config card (`go2_card.py`)
++`logs/<exp>/CONFIG_CARD.md`, one page (about 60 lines). It reads only the run's files: `cfgs.pkl`, `manifest.json`,
++the checkpoint, `exported/`, `report/summary.json` and `decisions/`. Sections:
++1. **Freeze checklist**, each line `ok` or `NO` with the reason:
++
++   | Line | ok when |
++   |---|---|
++   | code committed | the manifest has a commit; at training time the tree was clean and held no untracked `.py` file |
++   | code unchanged | every `.py` file still has the fingerprint the run recorded |
++   | export checked | `exported/` is from this checkpoint, passed every check, has `policy.onnx`, and its files still have the recorded sha256 |
++   | report complete | `report/summary.json` is from this checkpoint, has all 10 worlds, every tile type and level the run trained on, and ≥ 20 envs per bin (`REPORT_MIN_REPS`) |
++   | decision slip / critic | the record exists and the run follows it (penalty weight and mode; privileged entries) |
++   | reset_forward | `env.reset_forward` is True |
++
++2. **Identity and training**: commit, host, GPU, versions, the exact command, PPO settings, networks and parameter
++   counts.
++3. **World**: physics, the [S2R] contact model, the randomization, the terrain and the mean level the curriculum
++   reached per type, the command ranges (reached, deployed).
++4. **Policy interface and rewards**: observation layout and noise, action, every reward weight and its parameters
++   (the source of each term is in `CHANGES.md`, "Rewards and terminations per phase").
++5. **Results**: the headline numbers of the report (a slope table included).
++6. **Export**: sha256 and errors of each file, ONNX inputs and outputs.
++7. **Decisions**: P3.2, P3.3 (decision, date, runs, flags, criteria), `reset_forward`.
++8. **Reproduce**: `git checkout <commit>` and the command line.
++
++`--freeze DIR` copies the card and the small records into `DIR` (git-tracked): `deploy_cfg.json`,
++`export_check.json`, `REPORT.md`, `summary.json`, the decisions, `manifest.json`, `cfgs.pkl` and `cfgs.json`. It then
++prints the git and gh commands. The binaries (policy files, checkpoint, `terrain.npz`) go to the GitHub release,
++because `logs/` and `*.pt` are git-ignored. `--strict` makes any `NO` an error (exit 1), and then `--freeze` copies
++nothing: a baseline is frozen clean, or not at all.
++
++#### 7.1.5 The decisions feed the run (`go2_decide.py flags`)
++`python go2_decide.py flags` prints the `go2_train.py` flags of the KEEP decisions in `decisions/` (nothing for a
++DROP). On stderr it says what each record decided, and warns when a record is missing. So the v1.0 command line is
++built from the records, and the card checks that the run followed them.
++
++### 7.2 First session: a dry run of the freeze (CPU, ~15 min)
++Run the whole chain once on a tiny run, before spending GPU hours. Nothing here is committed.
++```bash
++python go2_provenance.py                    # git state and versions as the tools see them
++python go2_train.py -e smoke-v1 --cpu -b 32 --max-iterations 3 --terrain --cmd-curriculum \
++    --set env.reset_forward=True $(python go2_decide.py flags)
++python go2_export.py -e smoke-v1 --ckpt 2 --onnx --check-envs 2 --check-steps 50
++python test_go2_deploy.py --policy logs/smoke-v1/exported
++python go2_report.py -e smoke-v1 --ckpt 2 --cpu --reps 2 --grid-types hill pit rough --grid-levels 0 9
++python go2_card.py -e smoke-v1 --ckpt 2 --name "Smoke v1" --freeze /tmp/smoke-v1-freeze
++python go2_provenance.py logs/smoke-v1      # "code unchanged since training"
++```
++Check:
++- The start of training prints both `--set` lines, and a `WARNING` if your tree is dirty or has untracked `.py` files.
++- The export prints four errors around 1e-7; `logs/smoke-v1/exported/` holds `policy.pt`, `policy.onnx` (one file,
++  no `.data`), `deploy_cfg.json`, `export_check.json`.
++- The report runs 10 worlds and prints the headline numbers (a 3-iteration policy does not walk: falls, n/a and
++  "none" frontiers are expected).
++- On the card, expect: `export checked` ok, `code unchanged` ok, `reset_forward` ok; `report complete` **NO**
++  (2 envs per bin, tile subsets: by design, a quick report cannot pass for a baseline's); `code committed` NO if your
++  tree was dirty; decisions NO until `decisions/` holds both records.
++- `/tmp/smoke-v1-freeze/` holds the copies; the console shows the git and gh commands it would have you run.
++
++### 7.3 The freeze, step by step
+ ```bash
+-V1FLAGS="--terrain --cmd-curriculum <P3.2 decision> <P3.3 decision> --set env.reset_forward=True"
+-python go2_train.py -e go2-v1.0 $BASE $V1FLAGS            # + -s2 and -s3 for the thesis
++# 0) P3.2 and P3.3 decided: decisions/slip.md and decisions/critic.md exist (sections 5.4, 6.4)
++python go2_decide.py flags                  # e.g. "--foot-slip 0.1" or nothing
++# 1) Commit the code that will train v1.0 (the manifest records the commit; a dirty tree is flagged on the card)
++git add -A && git commit -m "Code of Baseline v1.0"
++# 2) The final run, + seeds 2 and 3 for the thesis
++V1FLAGS="--terrain --cmd-curriculum --set env.reset_forward=True $(python go2_decide.py flags)"
++python go2_train.py -e go2-v1.0    $BASE          $V1FLAGS
++python go2_train.py -e go2-v1.0-s2 $BASE --seed 2 $V1FLAGS
++python go2_train.py -e go2-v1.0-s3 $BASE --seed 3 $V1FLAGS
++# 3) Export, checked (TorchScript + ONNX), and the deploy-side tests on it
++python go2_export.py -e go2-v1.0 --ckpt $CKPT --onnx
++python test_go2_deploy.py --policy logs/go2-v1.0/exported
++# 4) The harness report (+ the unitree_mujoco gate suite); the other seeds without the gate
++python go2_report.py -e go2-v1.0 --ckpt $CKPT --gate ~/unitree_mujoco
++for S in s2 s3; do python go2_report.py -e go2-v1.0-$S --ckpt $CKPT --ref go2-v1.0; done
++# 5) The card, frozen into baselines/v1.0/; then run the git / gh commands it prints (7.5)
++python go2_card.py -e go2-v1.0 --ckpt $CKPT --name "Baseline v1.0" --freeze baselines/v1.0 --strict
+ ```
+-`<P3.2 decision>` and `<P3.3 decision>` are the "flags:" lines of `decisions/slip.md` and `decisions/critic.md`
+-(`--foot-slip 0.1` or nothing; `--privileged critic` or nothing).
+-`reset_forward=True` removes the reset kick on flat tiles too (4.1.8). The freeze is the moment to take it, since it
+-ends bit-identity with P2 anyway.
+-
+-### 7.3 What will change, per file
+-- **`go2_card.py`** (new): `python go2_card.py -e go2-v1.0 --ckpt N` writes `logs/go2-v1.0/CONFIG_CARD.md`, one page:
+-  - identity: run, checkpoint, date, git commit and dirty flag (`logs/<exp>/git/`), Genesis / rsl_rl / torch versions;
+-  - training: flags, iterations, envs, seed;
+-  - world: DR ranges, the `[S2R]` contact model, terrain (types, levels, where the curriculum ended per type), command
+-    ranges reached;
+-  - observation and action layout; rewards (weights, sources); network;
+-  - headline results from the harness report (flat 0.5 m/s, grid frontiers, ±20° slopes, gate);
+-  - export: files, sha256, max error of each check;
+-  - decisions: P3.2 slip penalty and P3.3 privileged critic (from `decisions/slip.md` and `decisions/critic.md`, written
+-    by `go2_decide.py`), `reset_forward`, with one line of evidence each.
+-- **`go2_export.py`**: `--onnx` also writes `policy.onnx` (rsl_rl 5.5.1 `export_policy_to_onnx`, opset 18).
+-  - Checked with onnxruntime against the training policy, as the TorchScript check already does. Two input sets:
+-    100 random observations, and observations recorded by `go2_metrics.py` (a real state distribution).
+-  - sha256 of both files go into `deploy_cfg["source"]`.
+-  - Recurrent policies: check rsl_rl's ONNX inputs and outputs for the hidden state before relying on it.
+-- **`go2_report.py`** (new): runs the standard set and collects `logs/<exp>/report/`:
+-  - flat nominal, flat DR;
+-  - own tiles, unseen tiles;
+-  - slopes ±10 / ±20 / ±25;
+-  - optionally the unitree_mujoco gate suite.
+-
+-  Output: one summary table and the PNGs. The same command then measures every later candidate against v1.0.
+-- **`runs.md`**: the v1.0 row.
+-
+-### 7.4 Git tag and artifacts
+-```bash
+-git add -A && git commit -m "Baseline v1.0"          # the code that trained go2-v1.0
+-git tag -a baseline-v1.0 -m "Baseline v1.0: go2-v1.0 ckpt N (CONFIG_CARD.md)"
+-git push origin main baseline-v1.0
++Notes:
++- `$BASE` already holds `--seed 1`; a second `--seed` later on the line wins.
++- `reset_forward=True` removes the reset kick on flat tiles too (4.1.8). The freeze is the moment to take it, since
++  it ends bit-identity with P2 anyway.
++- Train from a clean tree: commit first, then do not edit any `.py` until the card is written. The card checks both.
++- The seed-2 and seed-3 reports against v1.0 give the seed-to-seed spread of every headline number. Write it in the
++  thesis next to v1.0's numbers (results log in 7.9).
++- Add the v1.0 row to your `runs.md`: run, tag, training commit, checkpoint, flags, the card's headline numbers.
++
++### 7.4 Reading the outputs
++
++#### 7.4.1 The export
++```
++exported to logs/smoke-p32/exported: policy.pt, policy.onnx, deploy_cfg.json, export_check.json (MLP)
++  policy.pt   max |export - policy|: random_100 0.00e+00, rollout_8x200 1.34e-07
++  policy.onnx max |export - policy|: random_100 1.79e-07, rollout_8x200 1.19e-07
++```
++(a smoke run here)
++- Expect ~1e-7: float32 round-off.
++- 1e-5 to 1e-4 would point at a different code path (e.g. an observation normalizer that was not exported). Above
++  1e-4 the script stops and writes `"passed": false`.
++- The rollout check is the one that matters for a recurrent policy: it replays real sequences, with resets.
++- torch 2.15 prints a `FutureWarning` that `torch.jit.load` is deprecated: expected, `policy.pt` still loads.
++
++#### 7.4.2 `REPORT.md`
++- One table per world, with the same metrics as sections 4.4 and 5.4.
++- Read the flat tables first: they are the P1/P2 tables, so v1.0 can be compared with every earlier run.
++- Then the frontiers (own vs unseen tiles: within a level means no overfitting to the tile instances), then the
++  slopes (up vs down at the same angle).
++- With `--ref`, the last table lists every headline number of both runs, the change (falls in percentage points) and
++  which way is better.
++
++#### 7.4.3 The card
++- Read the checklist first. Every `NO` names its reason. For a baseline, all lines must be `ok` (`--strict`).
++- Then check the **Command** line. It is exactly what trained the policy: flags, iterations, envs, seed.
++- The **Decisions** section must agree with the command (the checklist verifies it).
++
++### 7.5 Git tag and release
++`go2_card.py --freeze baselines/v1.0` prints, for example:
++```bash
++git add baselines/v1.0 decisions
++git commit -m "Baseline v1.0: go2-v1.0 checkpoint 1999 (config card, report, export hashes)"
++git tag -a baseline-v1.0 -m "Baseline v1.0: go2-v1.0 checkpoint 1999, trained from <commit>"
++git push origin HEAD baseline-v1.0
+ gh release create baseline-v1.0 logs/go2-v1.0/exported/policy.pt logs/go2-v1.0/exported/policy.onnx \
+-    logs/go2-v1.0/exported/deploy_cfg.json logs/go2-v1.0/CONFIG_CARD.md logs/go2-v1.0/terrain.npz \
+-    --notes-file logs/go2-v1.0/CONFIG_CARD.md
++    logs/go2-v1.0/exported/deploy_cfg.json logs/go2-v1.0/terrain.npz logs/go2-v1.0/model_1999.pt \
++    --verify-tag --title "Baseline v1.0" --notes-file baselines/v1.0/CONFIG_CARD.md
+ ```
+-Your `.gitignore` excludes `logs/`, `*.pt` and `*.onnx`, so the tag holds the code only. The release holds the
+-policy, its config and its grid.
++- The tag points at the commit that adds `baselines/v1.0/` on top of the training commit. The card names the
++  training commit, and "code unchanged" proves that no `.py` file changed in between.
++- `--verify-tag` makes gh use the tag you pushed; without it, gh would create a missing tag from the default branch's
++  latest state.
++- The release holds what git does not: the policy files, `deploy_cfg.json`, the checkpoint (to fine-tune or distill
++  from later) and the exact grid. The card is its description.
++- Later, to check a checkout against the baseline: `git checkout baseline-v1.0 && python go2_provenance.py
++  logs/go2-v1.0`.
+ 
+-### 7.5 Done when
+-The card, the checked export (TorchScript and ONNX), the report and the tag exist and point to each other: commit
+-hash in the card, card in the release, release on the tag.
++### 7.6 Later candidates against v1.0
++```bash
++python go2_report.py -e go2-v2 --ckpt $CKPT --ref go2-v1.0
++```
++- The "Against go2-v1.0" table shows the change of every headline number, with its direction.
++- Train candidates with the same `$V1FLAGS` plus the change under test, and confirm on 2 seeds, as for P3.2 and P3.3.
++- `--ref` takes a run name, a run folder, or a frozen baseline folder: `--ref baselines/v1.0` compares with the
++  `summary.json` frozen in git, on any machine. It is read before the evaluation starts, so a typo fails at once.
++
++### 7.7 Knobs
++
++| Knob | Where | Default | Effect |
++|---|---|---|---|
++| ONNX export | `go2_export.py --onnx` | off | needed for a clean freeze (the card checks it) |
++| check size | `--check-envs`, `--check-steps` | 8 × 200 | longer = more of the state space replayed |
++| tolerance | `EXPORT_TOL` (`go2_export.py`) | 1e-4 | float32 round-off is ~1e-7 |
++| evaluation size | `go2_report.py --reps` | 20 | envs per bin, as in `go2_metrics.py` |
++| evaluation seed | `go2_report.py --seed` | 0 | the same for every run you compare |
++| the standard set | `WORLDS`, `SLOPES` (`go2_report.py`), `STANDARD_WORLDS` (`go2_card.py`) | 10 worlds | change both lists together |
++| frontier threshold | `FRONTIER_THROUGH` (`go2_report.py`) | 80 % | |
++| key commands | `FLAT_BINS` (`go2_report.py`) | 6 bins | rows of the flat tables |
++| baseline report size | `REPORT_MIN_REPS` (`go2_card.py`) | 20 | below it, "report complete" is NO |
++| card title, tag | `go2_card.py --name`, `--tag` | run name | the tag is derived from the name |
++| release files | `RELEASE_FILES` (`go2_card.py`) | policy files, deploy_cfg, terrain + the checkpoint | |
++
++### 7.8 Symptoms → fixes
++
++| Symptom | Likely cause | Fix |
++|---|---|---|
++| `--onnx: No module named 'onnxscript'` (or `onnx`) | torch ≥ 2.9 exports through onnxscript | `pip install onnx onnxscript onnxruntime` |
++| `exported network does not match the training policy` | a module the export does not carry, or an rsl_rl version change | compare `random_100` and `rollout_*`; check that `rsl-rl-lib` is 5.5.1 |
++| a `policy.onnx.data` next to `policy.onnx` | exported by rsl_rl directly, not through `go2_export.py` | re-export with `go2_export.py --onnx` (one file) |
++| card: **NO** code committed | trained from a dirty tree (`git_diff.patch` holds the diff), or with untracked `.py` files | commit, retrain; or freeze knowingly, with the patch in `baselines/` |
++| card: **NO** code unchanged | a `.py` file was edited after training | `python go2_provenance.py logs/<exp>` lists them; revert them (`git stash`) or retrain |
++| card: **NO** report complete | a world failed or was not run; tile subsets; `--reps` below 20 | `report/logs/<world>.log`; rerun with the defaults (`--skip-existing` for missing worlds only) |
++| card: **NO** decision slip / critic | the run does not follow `decisions/` | retrain with `$(python go2_decide.py flags)` |
++| card: Command "unknown (manifest before P3.4)" | a run trained before P3.4 | fine for comparisons; a baseline should be trained with the P3.4 code |
++| `--gate`: no export | the gate runs the exported policy in unitree_mujoco | `go2_export.py --onnx` first |
++| gate suite fails to start | unitree_mujoco or DDS setup | run `go2_sim_suite.py --suite gate` by hand, then `go2_report.py --collect --gate-summary out/suite_*/summary.csv` |
++| `--ref: no summary.json for EXP` | the reference run has no report on this machine | `--ref baselines/v1.0` (the frozen summary), or run `go2_report.py` on it |
++| a second `--set` seemed ignored (runs before P3.4) | argparse kept only the last `--set` list | fixed: the lists add up now |
++
++### 7.9 Done when
++- `go2_card.py --strict` passes: every checklist line `ok`.
++- The tag `baseline-v1.0` is pushed, and the release on it holds `policy.pt`, `policy.onnx`, `deploy_cfg.json`, the
++  checkpoint and `terrain.npz`, with the card as its notes.
++- The card, the release and the tag point to each other: training commit in the card, card in the release, release
++  on the tag.
++
++Results log to fill in (from `REPORT.md` and the card):
++
++| Run | Seed | flat lin_err 0.5 | flat_dr falls | frontier hill / pit / obst (own) | mean through own / unseen | vx_meas ±20° | through ±25° | gate |
++|---|---|---|---|---|---|---|---|---|
++| go2-v1.0 | 1 | | | | | | | |
++| go2-v1.0-s2 | 2 | | | | | | | – |
++| go2-v1.0-s3 | 3 | | | | | | | – |
+ 
+ ---
+ 
+@@ -1305,15 +1537,38 @@
+   `CONTACT_N` (3 N, P1).
+ - `go2_decide.py`: `SLIP_DROP` (0.30), `FOOT_WORSE` (0.10), `LIN_ERR_TOL` (5 %, 0.005 m/s), `THROUGH_TOL` (5 points),
+   `COT_TOL` (5 %), `LEARN_REACH` (0.9), `LEARN_TOL` (5 %), `FINAL_TOL` (2 %), `LEVEL_TOL` (0.2), `MOVING` (0.1).
++- [P3.4] `go2_export.py`: `EXPORT_TOL` (1e-4).
++- [P3.4] `go2_report.py`: `WORLDS`, `SLOPES` (±10, ±20, ±25°), `FLAT_BINS` (6 commands), `FLAT_METRICS`,
++  `SLOPE_METRICS`, `FRONTIER_THROUGH` (80 %), `HEADLINE_BETTER`.
++- [P3.4] `go2_card.py`: `STANDARD_WORLDS` (the 10 worlds), `REPORT_MIN_REPS` (20), `RELEASE_FILES`.
++
++### `manifest.json` (every run; complete from P3.4)
++| Field | Content |
++|---|---|
++| `git_hash`, `git_dirty`, `git_untracked_py` | commit at the start; tracked files changed; `.py` files git does not track (`null` without git) |
++| `argv`, `args` | the command line; every argument after parsing |
++| `created`, `host`, `gpu` | start time (ISO, with time zone), machine, GPU name (`null` on CPU) |
++| `python`, `torch`, `cuda`, `genesis`, `rsl_rl` | versions |
++| `code_sha256` | `{file.py: sha256[:16]}` for every `.py` file of the code folder |
++| `cfgs` | the five configs, as in `cfgs.pkl` |
++
++### `exported/export_check.json` (P3.4)
++`{exp_name, ckpt, exported, tolerance, passed, max_abs_error: {file: {random_100, rollout_NxT}}, sha256: {policy.pt,
++policy.onnx, deploy_cfg.json}, recurrent, obs_dim, onnx_io: {inputs: {name: shape}, outputs}, git_commit, git_dirty}`
+ 
+ ### Files a P3 run writes
+ `logs/<exp>/`:
+-- `cfgs.pkl`, `model_*.pt` (with `infos["curriculum"]`), `terrain.npz` (grid runs), `git/`;
++- `cfgs.pkl`, `model_*.pt` (with `infos["curriculum"]`), `terrain.npz` (grid runs), `git/` (rsl_rl's, empty: 7.1.1);
++  [P3.4] `manifest.json`, `git_diff.patch` (dirty tree only);
+ - after evaluation: `metrics_*_grid.{csv,npz}`, `terrain_*_grid.png`, `gait_*_grid.png`, `metrics_*_slope±D.*`
+   ([P3.2] terrain `.npz` also hold `foot_normal`);
+-- `exported/` after export ([P3.3] `deploy_cfg["source"]["critic_privileged"]` for a privileged-critic run).
++- `exported/` after export ([P3.3] `deploy_cfg["source"]["critic_privileged"]` for a privileged-critic run; [P3.4]
++  `policy.onnx` with `--onnx`, `export_check.json`);
++- [P3.4] `report/` (`REPORT.md`, `summary.json`, `plots/`, `logs/<world>.log`) after `go2_report.py`; `CONFIG_CARD.md`
++  after `go2_card.py`.
+ 
+-`decisions/` (repository root, committed): `slip.md`, `critic.md`, written by `go2_decide.py`.
++`decisions/` (repository root, committed): `slip.md`, `critic.md`, written by `go2_decide.py`. [P3.4]
++`baselines/<version>/` (committed): the card and the small records, written by `go2_card.py --freeze`.
+ 
+ ---
+ 
+@@ -1336,6 +1591,10 @@
+ | `slip_v_FL[cm/s]` … `slip_share_RR[%]` | Foot slip per foot (printed `v / d / share`), CSV | [P3.2] the same per foot | lower; left ≈ right |
+ | `sym_err[rad]` | Gait pattern & symmetry | P2.3; [P3.3] mirrors every group the actor reads | lower |
+ | `decisions/<rule>.md` | `go2_decide.py` | [P3.2/P3.3] runs, rule, evidence, KEEP / DROP, implied flags | – |
++| frontier | `go2_report.py`, card | [P3.4] per tile type, the last level of the run of levels, from the lowest, with `through` ≥ 80 %; "none" (−1) when the lowest level fails | higher |
++| mean through | `go2_report.py` | [P3.4] mean `through[%]` over every tile of a grid world | higher |
++| `max \|export − policy\|` | `go2_export.py`, `export_check.json` | [P3.4] largest action difference between an exported file and the training policy, per input set (`random_100`, `rollout_NxT`) | ~1e-7; the script stops above 1e-4 |
++| change, better | `REPORT.md` with `--ref` | [P3.4] candidate − reference (falls: percentage points of the share); the direction that counts as better | – |
+ | `Curriculum/*` | TensorBoard | the tags of 3.5 | see 4.5 |
+ 
+ Rules of thumb:
+@@ -1375,6 +1634,14 @@
+ | [P3.3] `go2_symmetry: no mirror rule for the privileged entry` | a new entry without its mirror | add it to `_privileged_mirror()` (6.6) |
+ | [P3.3] `go2_export.py`: the actor reads `['policy', 'privileged']` | a teacher run | by design: distill a student first |
+ | [P3.3] `--privileged-entries needs --privileged critic or teacher` | entries without a reader | add `--privileged` |
++| [P3.4] `--onnx: No module named 'onnxscript'` (or `onnx`, `onnxruntime`) | torch ≥ 2.9 exports through onnxscript; the check runs onnxruntime | `pip install onnx onnxscript onnxruntime` |
++| [P3.4] `exported network does not match the training policy (worst ... > 0.0001)` | the export differs from the training policy | 7.8 |
++| [P3.4] `WARNING: uncommitted changes; the run records them in .../git_diff.patch` | dirty tree when training starts | fine for tests; commit before the baseline run |
++| [P3.4] `WARNING: untracked .py files [...]` | a `.py` file git does not track | commit it, or list it in `.gitignore` |
++| `Could not find git repository in .../rsl_rl/__init__.py. Skipping.` | rsl_rl's own code-state logging (7.1.1) | harmless |
++| [P3.4] `--ref: no summary.json for EXP` | no report of the reference on this machine | `--ref baselines/v1.0`, or run `go2_report.py` on it |
++| [P3.4] `--gate: no export in ...` | the gate suite runs the exported policy | `go2_export.py --onnx` first |
++| [P3.4] a `NO` line on the config card | see the reason on the line | 7.8 |
+ 
+ ---
+ 
+@@ -1426,3 +1693,15 @@
+   `algorithms/ppo.py` (`construct_algorithm`, default sets `actor` / `critic`).
+ - [P3.2] Genesis 1.4.2, installed package: `RigidEntity.get_contacts()` (contact `"normal"` and `"position"`;
+   `collider.py` contact data), `get_links_ang()`, `get_links_net_contact_force()`.
++- [P3.4] rsl-rl-lib 5.5.1, installed package: `runners/on_policy_runner.py` (`export_policy_to_jit`,
++  `export_policy_to_onnx` with opset 18, `add_git_repo_to_log`), `models/mlp_model.py` and `models/rnn_model.py`
++  (`as_onnx`: input and output names), `utils/logger.py` (`_store_code_state`: `git/<repo>.diff`).
++- [P3.4] torch 2.15, installed package: `onnx/__init__.py` (`export`: `dynamo=True` by default since 2.9,
++  `external_data=True`), `onnx/_internal/exporter/_core.py` (imports onnxscript), `jit/_serialization.py` (the
++  `torch.jit.load` deprecation warning). PyTorch 2.8 release notes draft,
++  [pytorch-labs/torch-release-notes#17](https://github.com/pytorch-labs/torch-release-notes/pull/17): `dynamo=True` by
++  default from 2.9, TorchScript "nearing end-of-life".
++- [P3.4] onnx 1.23.2, installed package: `external_data_helper.py`. ONNX Runtime
++  [Python API](https://onnxruntime.ai/docs/api/python/api_summary.html): `InferenceSession`, `get_inputs`, `run`.
++- [P3.4] GitHub CLI manual, [gh release create](https://cli.github.com/manual/gh_release_create): assets, `--title`,
++  `--notes-file`, `--verify-tag` (otherwise a missing tag is created from the default branch's latest state).
+diff -ruN a/go2_card.py b/go2_card.py
+--- a/go2_card.py	1970-01-01 09:00:00.000000000 +0900
++++ b/go2_card.py	2026-11-05 08:17:21.695872012 +0900
+@@ -0,0 +1,429 @@
++"""
++go2_card.py - [P3.4] The one-page config card of a run, logs/<exp>/CONFIG_CARD.md: what the policy is, how it was
++trained, how well it does, which files hold it, and why each P3 choice was made. It reads the run's own files (no
++Genesis): cfgs.pkl, manifest.json, model_<ckpt>.pt, exported/ (deploy_cfg.json, export_check.json, the policy files),
++report/summary.json (go2_report.py) and the decision records decisions/slip.md and decisions/critic.md (go2_decide.py).
++
++    python go2_card.py -e go2-v1.0 --ckpt 1999 --name "Baseline v1.0"           # -> logs/go2-v1.0/CONFIG_CARD.md
++    python go2_card.py -e go2-v1.0 --ckpt 1999 --name "Baseline v1.0" --freeze baselines/v1.0 --strict
++                                                    # + the git-tracked copy; --strict: exit 1 unless every line is ok
++
++The card opens with a freeze checklist; each line is "ok" or "NO" with the reason:
++    code committed          the run's manifest has a git commit, and at training time the working tree was clean
++                            and held no untracked .py file
++    code unchanged          every .py file of this folder still has the fingerprint the run recorded
++                            (go2_provenance.py)
++    export checked          exported/ is from this checkpoint, passed every check of go2_export.py (TorchScript and
++                            ONNX), and its files still have the recorded sha256
++    report complete         report/summary.json is from this checkpoint, has every world of the standard set, every
++                            tile type and level the run trained on, and at least REPORT_MIN_REPS (20) envs per bin
++    decision slip           decisions/slip.md exists and the run follows it (foot-slip weight and mode)
++    decision critic         decisions/critic.md exists and the run follows it (privileged entries)
++    reset_forward           on (TEST_AND_TINKER_P3.md 4.1.8)
++--freeze DIR copies the card and the small records (deploy_cfg.json, export_check.json, REPORT.md, summary.json, the
++decisions, manifest.json, cfgs.pkl and cfgs.json) into DIR, a folder git tracks, and prints the git and gh commands of
++the tag and the release (policy.pt, policy.onnx, deploy_cfg.json, the checkpoint and terrain.npz go to the release:
++logs/ and *.pt are git-ignored). --strict makes any "NO" an error (exit 1), and then --freeze copies nothing.
++"""
++
++import argparse
++import json
++import math
++import os
++import pickle
++import re
++import shutil
++
++from go2_provenance import compare_code, now, sha256_file
++
++STANDARD_WORLDS = ("flat", "flat_dr", "grid", "grid_unseen", "slope+10", "slope-10", "slope+20", "slope-20",
++                   "slope+25", "slope-25")  # go2_report.WORLDS
++RELEASE_FILES = ("exported/policy.pt", "exported/policy.onnx", "exported/deploy_cfg.json", "terrain.npz")
++REPORT_MIN_REPS = 20  # envs per bin a baseline report needs (go2_report.py --reps, default 20)
++
++
++def load_json(path):
++    if not os.path.isfile(path):
++        return None
++    with open(path) as f:
++        return json.load(f)
++
++
++def fmt(x, digits=3):
++    if x is None:
++        return "n/a"
++    if isinstance(x, float):
++        return "n/a" if math.isnan(x) else f"{x:.{digits}g}"
++    return str(x)
++
++
++def short(digest):
++    return digest[:16] if digest else "n/a"
++
++
++# ---------------------------------------------------------------------------------------------------------------------
++# Decision records (go2_decide.py)
++# ---------------------------------------------------------------------------------------------------------------------
++def read_decision(path):
++    """decisions/<rule>.md -> {"decision": KEEP/DROP, "flags": "...", "date", "runs", "criteria": [(name, ok)]}."""
++    if not os.path.isfile(path):
++        return None
++    text = open(path).read()
++    out = {"path": path, "criteria": []}
++    m = re.search(r"^# Decision: .*-> (KEEP|DROP)", text, re.M)
++    out["decision"] = m.group(1) if m else "?"
++    m = re.search(r"^- --on configuration: flags: (.*)$", text, re.M)
++    out["flags"] = m.group(1).strip() if m else ""
++    m = re.search(r"^- date: ([0-9-]+), checkpoint (\d+)", text, re.M)
++    out["date"], out["ckpt"] = (m.group(1), m.group(2)) if m else ("?", "?")
++    for key in ("off", "on"):
++        m = re.search(rf"^- --{key} runs: (.*)$", text, re.M)
++        out[key] = m.group(1).strip() if m else "?"
++    for name, result in re.findall(r"^\| ([^|]+?) \| (pass|FAIL) \|", text, re.M):
++        out["criteria"].append((name, result == "pass"))
++    return out
++
++
++def decision_matches(rule, d, reward_cfg, obs_cfg, train_cfg):
++    """Does the run's configuration follow the decision? -> (ok, reason)."""
++    if d is None:
++        return False, "no record"
++    if rule == "slip":
++        weight = reward_cfg["reward_scales"].get("foot_slip")
++        mode = reward_cfg.get("foot_slip_mode", "xy")
++        if d["decision"] == "DROP":
++            return weight is None, "penalty off, as decided" if weight is None else f"the run has foot_slip {weight}"
++        m = re.search(r"--foot-slip\s+([0-9.eE+-]+)", d["flags"])
++        want_w = -abs(float(m.group(1))) if m else None
++        m = re.search(r"foot_slip_mode=(\w+)", d["flags"])
++        want_mode = m.group(1) if m else "xy"
++        ok = weight is not None and want_w is not None and abs(weight - want_w) < 1e-12 and mode == want_mode
++        if ok:
++            return ok, f"the run follows it: foot_slip {weight}, mode {mode}"
++        return ok, f"run: foot_slip {weight}, mode {mode}; decision: {want_w}, mode {want_mode}"
++    groups = train_cfg.get("obs_groups", {})
++    entries = list(obs_cfg.get("privileged") or [])
++    critic = "privileged" in groups.get("critic", []) and "privileged" not in groups.get("actor", [])
++    if d["decision"] == "DROP":
++        return not entries, "no privileged group, as decided" if not entries else f"the run has {entries}"
++    m = re.search(r"--privileged-entries\s+(.*)$", d["flags"])
++    want = m.group(1).split() if m else []
++    ok = critic and entries == want
++    if ok:
++        return ok, f"the run follows it: the critic reads {len(entries)} entries ({', '.join(entries)})"
++    return ok, (f"run: critic reads {entries}" if critic else "run: the critic does not read the privileged "
++                "group") + f"; decision: {want}"
++
++
++# ---------------------------------------------------------------------------------------------------------------------
++def switches(env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg):
++    """The flags a configuration implies (for runs whose manifest has no command line)."""
++    scales, out = reward_cfg["reward_scales"], []
++    if env_cfg.get("terrain"):
++        out.append("--terrain")
++    if command_cfg.get("curriculum"):
++        out.append("--cmd-curriculum")
++    if "foot_slip" in scales:
++        out.append(f"--foot-slip {abs(scales['foot_slip']):g}")
++    groups = train_cfg.get("obs_groups", {})
++    if obs_cfg.get("privileged"):
++        out.append(f"--privileged {'teacher' if 'privileged' in groups.get('actor', []) else 'critic'}")
++    sym = train_cfg["algorithm"].get("symmetry_cfg")
++    if sym:
++        out.append("--symmetry " + ("both" if sym["use_data_augmentation"] and sym["use_mirror_loss"] else
++                                    "aug" if sym["use_data_augmentation"] else "loss" if sym["use_mirror_loss"] else
++                                    "log"))
++    if "gait" in scales:
++        out.append("--gait spot")
++    if env_cfg.get("gait_clock"):
++        out.append("--gait wtw")
++    if "energy" in scales:
++        out.append(f"--energy {abs(scales['energy']):g}")
++    if (env_cfg.get("recovery") or {}).get("init_prob", 0) > 0:
++        out.append("--recovery")
++    if command_cfg.get("num_commands", 3) == 4:
++        out.append("--height-cmd")
++    if train_cfg["actor"].get("class_name") == "RNNModel":
++        out.append(f"--rnn {train_cfg['actor'].get('rnn_type')}")
++    if "SmoothPPO" in train_cfg["algorithm"].get("class_name", ""):
++        a = train_cfg["algorithm"]
++        out.append(f"--lcp {a.get('grad_penalty_coef')} --caps-t {a.get('caps_temporal_coef')} "
++                   f"--caps-s {a.get('caps_spatial_coef')}")
++    if env_cfg.get("reset_forward") is not None:
++        out.append(f"--set env.reset_forward={env_cfg['reset_forward']}")
++    return out
++
++
++def reps_text(reps):
++    """Envs per bin of a report: 20, or [2, 20] when its worlds were measured with different --reps."""
++    return f"{reps[0]} to {reps[-1]} (worlds differ)" if isinstance(reps, list) else str(reps)
++
++
++def fmt_dict(d):
++    """{'hip': 23.7, 'calf': 45.43} -> 'hip 23.7, calf 45.43' (other values unchanged)."""
++    return ", ".join(f"{k} {v}" for k, v in d.items()) if isinstance(d, dict) else d
++
++
++def param_count(state_dict):
++    return sum(v.numel() for v in state_dict.values() if hasattr(v, "numel"))
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    p.add_argument("-e", "--exp_name", required=True)
++    p.add_argument("--ckpt", type=int, required=True)
++    p.add_argument("--log_dir", default=None, help="default: logs/<exp_name>")
++    p.add_argument("--name", default=None, help='e.g. "Baseline v1.0" (title of the card, and of the tag)')
++    p.add_argument("--decisions", default="decisions", help="folder of the go2_decide.py records")
++    p.add_argument("--freeze", default=None, metavar="DIR", help="copy the card and records here (tracked by git)")
++    p.add_argument("--tag", default=None, help="git tag for the printed commands (default: from --name)")
++    p.add_argument("--strict", action="store_true",
++                   help="exit with an error when a checklist line is NO (and then freeze nothing)")
++    args = p.parse_args()
++
++    log_dir = args.log_dir or os.path.join("logs", args.exp_name)
++    with open(os.path.join(log_dir, "cfgs.pkl"), "rb") as f:
++        env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
++    manifest = load_json(os.path.join(log_dir, "manifest.json")) or {}
++    import torch  # only to read the checkpoint
++
++    ckpt_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
++    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
++    infos = ckpt.get("infos") or {}
++    curriculum = infos.get("curriculum") or {}
++    deploy = load_json(os.path.join(log_dir, "exported", "deploy_cfg.json"))
++    check = load_json(os.path.join(log_dir, "exported", "export_check.json"))
++    report = load_json(os.path.join(log_dir, "report", "summary.json"))
++    decisions = {rule: read_decision(os.path.join(args.decisions, f"{rule}.md")) for rule in ("slip", "critic")}
++    title = args.name or args.exp_name
++
++    # --- freeze checklist
++    items = []
++    # untracked .py files fail too: a checkout of the commit would lack them (commit them, or list them in .gitignore)
++    items.append(("code committed", bool(manifest.get("git_hash")) and manifest.get("git_dirty") is False
++                  and not manifest.get("git_untracked_py"),
++                  f"commit {manifest.get('git_hash') or 'unknown'}, dirty {manifest.get('git_dirty')}"
++                  + (f", untracked .py {manifest['git_untracked_py']}" if manifest.get("git_untracked_py") else "")))
++    diff = compare_code(manifest)
++    if diff is None:
++        items.append(("code unchanged", False, "no code fingerprint in manifest.json (trained before P3.4)"))
++    else:
++        changed, added, removed = diff
++        items.append(("code unchanged", not (changed or removed),
++                      "every .py file as at training" if not (changed or removed) else
++                      f"changed since training: {changed + removed}"))
++    if check is None:
++        items.append(("export checked", False, "no exported/export_check.json: run go2_export.py --onnx"))
++    else:
++        exported = os.path.join(log_dir, "exported")
++        intact = all(os.path.isfile(os.path.join(exported, n)) and sha256_file(os.path.join(exported, n)) == h
++                     for n, h in check["sha256"].items())
++        ok = check.get("ckpt") == args.ckpt and check.get("passed") and intact and "policy.onnx" in check["sha256"]
++        worst = max(e for c in check["max_abs_error"].values() for e in c.values())
++        items.append(("export checked", ok, (f"the export is of checkpoint {check.get('ckpt')}; "
++                                             if check.get("ckpt") != args.ckpt else "")
++                      + f"worst |export - policy| {worst:.1e} (tolerance {check['tolerance']:g}), passed "
++                      f"{check.get('passed')}, files intact {intact}, ONNX {'policy.onnx' in check['sha256']}"))
++    if report is None:
++        items.append(("report complete", False, "no report/summary.json: run go2_report.py"))
++    else:
++        gaps = [] if report["ckpt"] == args.ckpt else [f"the report is of checkpoint {report['ckpt']}"]
++        missing = [w for w in STANDARD_WORLDS if w not in report["worlds"]]
++        if missing:
++            gaps.append(f"missing {missing}")
++        reps = report["reps"]
++        if (min(reps) if isinstance(reps, list) else reps) < REPORT_MIN_REPS:
++            gaps.append(f"below the {REPORT_MIN_REPS} envs per bin a baseline needs")
++        t = curriculum.get("terrain")
++        for name in ("grid", "grid_unseen"):  # every tile type and level the run trained on (no --grid-types subset)
++            g = report["worlds"].get(name)
++            if t and g:
++                part = [ty for ty in t["types"] if len(g["types"].get(ty, {}).get("levels", [])) < t["num_levels"]]
++                if part:
++                    gaps.append(f"{name} lacks levels of {part}")
++        items.append(("report complete", not gaps, f"{reps_text(reps)} envs per bin; "
++                      + ("; ".join(gaps) if gaps else "every world, tile type and level of the standard set")))
++    for rule in ("slip", "critic"):
++        ok, why = decision_matches(rule, decisions[rule], reward_cfg, obs_cfg, train_cfg)
++        d = decisions[rule]
++        if d is None:
++            why = f"no {os.path.join(args.decisions, rule + '.md')}: decide it first (go2_decide.py {rule} ...)"
++        items.append((f"decision {rule}", ok, (f"{d['decision']} ({d['path']}); " if d else "") + why))
++    items.append(("reset_forward", env_cfg.get("reset_forward") is True,
++                  f"env.reset_forward = {env_cfg.get('reset_forward')}"))
++
++    # --- the card
++    L = [f"# Config card: {title}", "",
++         f"Run `{args.exp_name}`, checkpoint {args.ckpt} (iteration {ckpt.get('iter')}). Card written {now()} by "
++         f"`go2_card.py` (P3.4).", "", "## Freeze checklist", ""]
++    L += [f"- **{'ok' if ok else 'NO'}** {name}: {why}" for name, ok, why in items]
++    args_m = manifest.get("args") or {}
++    L += ["", "## Identity and training", "",
++          f"- Code: commit `{manifest.get('git_hash') or 'unknown'}`"
++          + (" (dirty: see git_diff.patch)" if manifest.get("git_dirty") else "")
++          + f"; trained {manifest.get('created', 'n/a')} on {manifest.get('host', 'n/a')}"
++          + (f", {manifest['gpu']}" if manifest.get("gpu") else ""),
++          f"- Versions: python {manifest.get('python')}, torch {manifest.get('torch')} (CUDA {manifest.get('cuda')}), "
++          f"Genesis {manifest.get('genesis')}, rsl-rl-lib {manifest.get('rsl_rl')}",
++          "- Command: `" + (" ".join(["python"] + manifest["argv"]) if manifest.get("argv") else
++                            "unknown (manifest before P3.4); switches: " + " ".join(
++                                switches(env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg))) + "`",
++          (f"- PPO: {args_m['num_envs']} envs × {train_cfg['num_steps_per_env']} steps, "
++           f"{args_m['max_iterations']} iteration(s), seed {args_m['seed']}; lr " if args_m else
++           f"- PPO: {train_cfg['num_steps_per_env']} steps per env and iteration (envs, iterations, seed: "
++           f"not in a manifest before P3.4); lr ")
++          + f"{train_cfg['algorithm']['learning_rate']} ({train_cfg['algorithm']['schedule']}, KL "
++          f"{train_cfg['algorithm']['desired_kl']}), clip {train_cfg['algorithm']['clip_param']}, entropy "
++          f"{train_cfg['algorithm']['entropy_coef']}, γ {train_cfg['algorithm']['gamma']}, λ "
++          f"{train_cfg['algorithm']['lam']}, {train_cfg['algorithm']['num_learning_epochs']} epochs × "
++          f"{train_cfg['algorithm']['num_mini_batches']} mini-batches"]
++    actor, critic = train_cfg["actor"], train_cfg["critic"]
++    groups = train_cfg.get("obs_groups", {})
++    L += [f"- Networks: actor {actor['class_name']} {actor.get('hidden_dims')} {actor.get('activation')}"
++          + (f" + {actor.get('rnn_type')} {actor.get('rnn_hidden_dim')}" if actor.get("rnn_type") else "")
++          + f" reads {groups.get('actor')} ({param_count(ckpt['actor_state_dict']):,} parameters); critic "
++          f"{critic.get('hidden_dims')} reads {groups.get('critic')} ({param_count(ckpt['critic_state_dict']):,})"
++          + (f"; privileged entries {obs_cfg['privileged']}" if obs_cfg.get("privileged") else "")]
++    dr = env_cfg.get("domain_rand", {})
++    sim_dt, decimation = env_cfg.get("sim_dt", 0.005), env_cfg.get("decimation", 4)
++    L += ["", "## World", "",
++          f"- Physics: {1 / sim_dt:.0f} Hz, policy {1 / (sim_dt * decimation):.0f} Hz, armature "
++          f"{env_cfg.get('armature')}, torque limits {fmt_dict(env_cfg.get('torque_limits'))} Nm, latency "
++          f"{dr.get('latency_range_s', env_cfg.get('latency_s'))} s",
++          f"- Contact model [S2R]: joints {env_cfg.get('joint_friction', 0)} Nm / {env_cfg.get('joint_damping', 0)} "
++          f"Nm s/rad, feet torsion {env_cfg.get('foot_torsional_friction')} rolling "
++          f"{env_cfg.get('foot_rolling_friction')}, cone {env_cfg.get('friction_cone')} impratio "
++          f"{env_cfg.get('impratio')}, MJCF lower legs {bool(env_cfg.get('lower_leg_inertial'))}",
++          "- Randomization: " + (", ".join(f"{k.replace('_range', '')} {v}" for k, v in dr.items()) or "none")]
++    t = curriculum.get("terrain")
++    if env_cfg.get("terrain"):
++        tc = env_cfg["terrain"]
++        line = f"- Terrain: {tc}"
++        if t:
++            per = ", ".join(f"{name} {sum(i * c for i, c in enumerate(counts)) / max(1, sum(counts)):.1f}"
++                            for name, counts in t["level_counts"].items())
++            line = (f"- Terrain: {', '.join(t['types'])}, {t['num_levels']} levels up to {t['max_slope_deg']:g}°; "
++                    f"mean level reached (0..{t['num_levels'] - 1}): {per}")
++        L.append(line)
++    else:
++        L.append("- Terrain: flat plane")
++    ranges = curriculum.get("command_ranges") or {"lin_vel_x": command_cfg["lin_vel_x_range"],
++                                                  "lin_vel_y": command_cfg["lin_vel_y_range"],
++                                                  "ang_vel": command_cfg["ang_vel_range"]}
++    L.append(f"- Commands: vx {ranges['lin_vel_x']}, vy {ranges['lin_vel_y']}, wz {ranges['ang_vel']}"
++             + (" (reached by the command curriculum; deployed)" if curriculum.get("command_curriculum") else "")
++             + (f", body height {command_cfg['body_height_range']}" if command_cfg.get("num_commands") == 4 else ""))
++    scales = reward_cfg["reward_scales"]
++    L += ["", "## Policy interface and rewards", "",
++          "- Observation: " + (", ".join(deploy["obs_layout"]) if deploy else "see go2_export.py") + "; noise "
++          + (fmt_dict(obs_cfg.get("noise_scales")) if obs_cfg.get("add_noise") else "none"),
++          f"- Action: 12 joint-position offsets × {env_cfg['action_scale']} around the default pose, PD (Kp "
++          f"{env_cfg['kp']}, Kd {env_cfg['kd']}) on the motors",
++          "- Rewards (weight per second): " + ", ".join(f"{k} {v:g}" for k, v in scales.items()),
++          f"- Reward parameters: tracking σ {reward_cfg['tracking_sigma']}, base height "
++          f"{reward_cfg['base_height_target']} m,"
++          f" air time {reward_cfg.get('feet_air_time_target')} s, clearance {reward_cfg.get('feet_height_target')} m"
++          + (f", foot slip mode {reward_cfg.get('foot_slip_mode', 'xy')}" if "foot_slip" in scales else "")
++          + f", only positive {reward_cfg.get('only_positive_rewards')}, penalties × "
++          f"{reward_cfg.get('penalty_scale_init', 1)} → 1 over "
++          f"{reward_cfg.get('penalty_ramp_steps', 0) / train_cfg['num_steps_per_env']:g} iterations"]
++    L += ["", "## Results (go2_report.py)", ""]
++    if report:
++        h, w = report["headline"], report["worlds"]
++        for name in ("flat", "flat_dr"):
++            items_h = {k[len(name) + 2:]: v for k, v in h.items() if k.startswith(name + ":")}
++            if items_h:
++                L.append(f"- {name}: " + "; ".join(f"{k} {fmt(v)}" for k, v in items_h.items()))
++        grids = []
++        for name, label in (("grid", "own tiles"), ("grid_unseen", "unseen tiles")):
++            if name in w:
++                fr = ", ".join(f"{t} {d['frontier'] if d['frontier'] is not None else 'none'}"
++                               for t, d in w[name]["types"].items())
++                grids.append(f"{label}: {fr} (mean through {fmt(w[name]['mean_through'])} %)")
++        if grids:
++            L.append(f"- Terrain frontier (last level with through ≥ {report.get('frontier_through', 80):g} %): "
++                     + "; ".join(grids))
++        slope_rows = [(k, w[k]) for k in ("slope+10", "slope-10", "slope+20", "slope-20", "slope+25", "slope-25")
++                      if k in w]
++        if slope_rows:
++            L += ["", "| slope | vx_meas @ 0.5 m/s | through @ 0.5 m/s [%] | falls (all bins) | standing falls |",
++                  "|---|---|---|---|---|"]
++            L += [f"| {k[5:]}° | {fmt(x['walk_0.5']['vx_meas'])} | {fmt(x['walk_0.5']['through[%]'])} | "
++                  f"{x['falls'][0]}/{x['falls'][1]} | {x['stand']['falls']} |" for k, x in slope_rows]
++            L.append("")
++        if "gate: runs as expected" in h:
++            L.append(f"- unitree_mujoco gate suite: {h['gate: runs as expected']} runs as expected")
++        L.append(f"- Full report: `report/REPORT.md` ({report['created']}, seed {report['seed']}, "
++                 f"{reps_text(report['reps'])} envs per bin)")
++    else:
++        L.append("- no report: `python go2_report.py -e EXP --ckpt N`")
++    L += ["", "## Export", ""]
++    if check:
++        for name, errs in check["max_abs_error"].items():
++            L.append(f"- `{name}` sha256 `{short(check['sha256'].get(name))}`: max |export − training policy| "
++                     + ", ".join(f"{k} {v:.1e}" for k, v in errs.items()))
++        L.append(f"- `deploy_cfg.json` sha256 `{short(check['sha256'].get('deploy_cfg.json'))}`"
++                 + (f"; ONNX I/O {check['onnx_io']}" if check.get("onnx_io") else ""))
++    else:
++        L.append("- not exported: `python go2_export.py -e EXP --ckpt N --onnx`")
++    L += ["", "## Decisions", ""]
++    for rule, label in (("slip", "P3.2 foot-slip penalty"), ("critic", "P3.3 privileged critic")):
++        d = decisions[rule]
++        if d is None:
++            L.append(f"- {label}: no record in `{args.decisions}/{rule}.md` (go2_decide.py {rule})")
++            continue
++        crit = ", ".join(f"{n} {'✓' if ok else '✗'}" for n, ok in d["criteria"])
++        L.append(f"- {label}: **{d['decision']}** ({d['date']}, checkpoint {d['ckpt']}; off: {d['off']}; on: "
++                 f"{d['on']}; flags of the on runs: `{d['flags']}`). Criteria: {crit}.")
++    L.append(f"- reset with forward kinematics (`env.reset_forward`): {env_cfg.get('reset_forward')} "
++             "(TEST_AND_TINKER_P3.md 4.1.8)")
++    if manifest.get("argv") and manifest.get("git_hash"):
++        L += ["", "## Reproduce", "", "```bash", f"git checkout {manifest['git_hash']}",
++              " ".join(["python"] + manifest["argv"]), "```"]
++    card = "\n".join(L) + "\n"
++    card_path = os.path.join(log_dir, "CONFIG_CARD.md")
++    with open(card_path, "w") as f:
++        f.write(card)
++    bad = [name for name, ok, _ in items if not ok]
++    print(f"config card: {card_path}")
++    for name, ok, why in items:
++        print(f"  {'ok' if ok else 'NO':2s}  {name}: {why}")
++
++    if args.freeze and bad and args.strict:  # a baseline is frozen clean, or not at all
++        print(f"\nNOT a clean freeze: {', '.join(bad)} (see the checklist). --strict: nothing copied to {args.freeze}")
++        raise SystemExit(1)
++    if args.freeze:
++        os.makedirs(args.freeze, exist_ok=True)
++        copies = [card_path, os.path.join(log_dir, "exported", "deploy_cfg.json"),
++                  os.path.join(log_dir, "exported", "export_check.json"), os.path.join(log_dir, "report", "REPORT.md"),
++                  os.path.join(log_dir, "report", "summary.json"), os.path.join(log_dir, "manifest.json"),
++                  os.path.join(log_dir, "cfgs.pkl"), os.path.join(log_dir, "git_diff.patch")]
++        copies += [d["path"] for d in decisions.values() if d]
++        for src in copies:
++            if os.path.isfile(src):
++                shutil.copy(src, os.path.join(args.freeze, os.path.basename(src)))
++        with open(os.path.join(args.freeze, "cfgs.json"), "w") as f:
++            json.dump(dict(zip(("env", "obs", "reward", "command", "train"),
++                               (env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg))), f, indent=2, default=str)
++        tag = args.tag or re.sub(r"[^A-Za-z0-9._-]+", "-", (args.name or args.exp_name).strip().lower())
++        assets = [os.path.join(log_dir, f) for f in RELEASE_FILES if os.path.isfile(os.path.join(log_dir, f))]
++        assets.append(ckpt_path)
++        print(f"\nfrozen records in {args.freeze}/. Then (git tracks {args.freeze}/ and {args.decisions}/; logs/ and "
++              f"*.pt are ignored, so the files go to the release):")
++        print(f"  git add {args.freeze} {args.decisions}")
++        print(f'  git commit -m "{title}: {args.exp_name} checkpoint {args.ckpt} (config card, report, export hashes)"')
++        print(f'  git tag -a {tag} -m "{title}: {args.exp_name} checkpoint {args.ckpt}, trained from '
++              f'{manifest.get("git_hash") or "unknown commit"}"')
++        print(f"  git push origin HEAD {tag}")
++        # --verify-tag: attach the release to the tag pushed above (without it, gh would create a missing tag from the
++        # default branch's latest state)
++        print(f'  gh release create {tag} {" ".join(assets)} --verify-tag --title "{title}" --notes-file '
++              f"{os.path.join(args.freeze, 'CONFIG_CARD.md')}")
++    if bad:
++        print(f"\nNOT a clean freeze yet: {', '.join(bad)} (see the checklist)")
++        if args.strict:
++            raise SystemExit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN a/go2_decide.py b/go2_decide.py
+--- a/go2_decide.py	2026-11-05 08:17:21.693778897 +0900
++++ b/go2_decide.py	2026-11-05 08:17:21.695908615 +0900
+@@ -24,6 +24,8 @@
+         fits the returns better; that alone is not a better policy).
+ Prints the evidence and writes decisions/<rule>.md: the decision record (runs, rule, numbers, decision, the flags it
+ implies), which the P3.4 config card includes. Commit it: logs/ is git-ignored, decisions/ is not.
++[P3.4] python go2_decide.py flags prints the flags the KEEP decisions imply (nothing for DROP), for the baseline run:
++    V1FLAGS="--terrain --cmd-curriculum --set env.reset_forward=True $(python go2_decide.py flags)"
+ """
+ 
+ import argparse
+@@ -34,6 +36,7 @@
+ import os
+ import pickle
+ import re
++import sys
+ 
+ # ---- pre-registered thresholds (TEST_AND_TINKER_P3.md 5.4 / 6.4)
+ SLIP_DROP = 0.30  # slip_v must drop by at least this share on every terrain world
+@@ -265,17 +268,42 @@
+             + (f" --privileged-entries {' '.join(entries)}" if entries else "")]
+ 
+ 
++def implied_flags(folder):
++    """[P3.4] The go2_train.py flags of the KEEP decisions in folder/slip.md and folder/critic.md (nothing for DROP).
++    Missing records are reported on stderr, so a baseline is never trained on an undecided question silently."""
++    flags = []
++    for rule in ("slip", "critic"):
++        path = os.path.join(folder, f"{rule}.md")
++        if not os.path.isfile(path):
++            print(f"go2_decide.py flags: no {path} (decide it first: go2_decide.py {rule} ...)", file=sys.stderr)
++            continue
++        text = open(path).read()
++        keep = re.search(r"^# Decision: .*-> KEEP", text, re.M)
++        line = re.search(r"^- --on configuration: flags: (.*)$", text, re.M)
++        print(f"go2_decide.py flags: {rule} {'KEEP' if keep else 'DROP'} ({path})", file=sys.stderr)
++        if keep and line:
++            flags.append(line.group(1).strip())
++    return " ".join(flags)
++
++
+ def main():
+     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+-    p.add_argument("rule", choices=("slip", "critic"),
+-                   help="slip: P3.2 foot-slip penalty; critic: P3.3 privileged critic")
+-    p.add_argument("--off", nargs="+", required=True, help="runs without the change (names under logs/, or folders)")
+-    p.add_argument("--on", nargs="+", required=True, help="runs with the change")
+-    p.add_argument("--ckpt", type=int, required=True)
++    p.add_argument("rule", choices=("slip", "critic", "flags"),
++                   help="slip: P3.2 foot-slip penalty; critic: P3.3 privileged critic; [P3.4] flags: print the "
++                        "go2_train.py flags the KEEP decisions of decisions/ imply")
++    p.add_argument("--off", nargs="+", help="runs without the change (names under logs/, or folders)")
++    p.add_argument("--on", nargs="+", help="runs with the change")
++    p.add_argument("--ckpt", type=int)
+     p.add_argument("--eval-seed", type=int, default=0, help="go2_metrics.py --seed of the CSVs")
+     p.add_argument("--note", type=str, default="", help="free text for the record (e.g. a changed threshold)")
+     p.add_argument("--out", type=str, default=None, help="default: decisions/<rule>.md")
++    p.add_argument("--decisions", default="decisions", help="[P3.4] flags: the folder of the records")
+     args = p.parse_args()
++    if args.rule == "flags":  # [P3.4] V1FLAGS="... $(python go2_decide.py flags)"
++        print(implied_flags(args.decisions))
++        return
++    if not (args.off and args.on and args.ckpt is not None):
++        p.error(f"{args.rule}: --off, --on and --ckpt are required")
+ 
+     def folder(run):  # a run name under logs/, or a run folder
+         return run if os.path.isfile(os.path.join(run, "cfgs.pkl")) else os.path.join("logs", run)
+diff -ruN a/go2_export.py b/go2_export.py
+--- a/go2_export.py	2026-11-05 08:17:21.693859857 +0900
++++ b/go2_export.py	2026-11-05 08:17:21.695994816 +0900
+@@ -17,6 +17,18 @@
+ [P3.3] A privileged critic (go2_train.py --privileged critic) changes nothing here: only the actor is exported, and it
+ reads the policy observation; deploy_cfg["source"] records the critic's entries. A teacher run (--privileged teacher)
+ is refused: its actor needs the privileged group, which the robot cannot measure (distill a student first).
++[P3.4] Baseline freeze (TEST_AND_TINKER_P3.md, section 7):
++    python go2_export.py -e go2-v1.0 --ckpt 1999 --onnx
++    policy.onnx       the same actor for ONNX runtimes (rsl_rl export_policy_to_onnx, opset 18): input "obs" [1, D],
++                      output "actions" [1, 12]; a recurrent actor also takes h_in (and c_in for an LSTM) and returns
++                      h_out (c_out): the caller carries them from one call to the next (zeros at a reset). One file:
++                      the weights torch writes to policy.onnx.data by default are folded back in
++    export_check.json every check of the exported files against the training policy, and their sha256
++Both exports are checked against the training policy (deterministic mean), one observation at a time as on the robot,
++on two input sets: 100 random observations, and the observations the policy itself meets in a rollout in the nominal
++world (--check-envs envs x --check-steps steps, commands resampled as in training, resets included). Any difference
++above EXPORT_TOL stops the script. deploy_cfg["source"] gets the files' sha256, the check results and the run's git
++commit (manifest.json). Needs: pip install onnx onnxscript onnxruntime (onnxscript: torch >= 2.9 exports with it).
+ """
+ 
+ import argparse
+@@ -32,6 +44,9 @@
+ 
+ import genesis as gs
+ from go2_env import Go2Env, nominal_world
++from go2_provenance import now, sha256_file  # [P3.4]
++
++EXPORT_TOL = 1e-4  # [P3.4] largest |export - training policy| accepted, in every check (float32 round-off: ~1e-6)
+ 
+ def obs_layout(num_commands, num_clock=0):
+     layout = ["base_ang_vel*ang_vel_scale (3)", "projected_gravity (3)", f"commands*commands_scale ({num_commands})",
+@@ -97,11 +112,87 @@
+     }
+ 
+ 
++class OnnxPolicy:
++    """[P3.4] policy.onnx through onnxruntime, called like the TorchScript export: one observation [1, D] per call; a
++    recurrent model's state (h, and c for an LSTM) is carried from one call to the next, and reset() zeroes it."""
++
++    def __init__(self, path):
++        try:
++            import onnxruntime as ort
++        except ImportError as e:
++            raise SystemExit("--onnx: pip install onnxruntime (to check policy.onnx)") from e
++        self.sess = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
++        self.input_shapes = {i.name: list(i.shape) for i in self.sess.get_inputs()}
++        self.outputs = [o.name for o in self.sess.get_outputs()]
++        self.reset()
++
++    def reset(self):
++        self.state = {name: np.zeros(shape, dtype=np.float32) for name, shape in self.input_shapes.items()
++                      if name != "obs"}
++
++    def __call__(self, obs):
++        out = dict(zip(self.outputs, self.sess.run(self.outputs, {"obs": np.asarray(obs, np.float32), **self.state})))
++        for name in self.state:  # h_in <- h_out, c_in <- c_out
++            self.state[name] = out[name.replace("_in", "_out")]
++        return out["actions"]
++
++
++def single_file_onnx(path):
++    """[P3.4] torch 2.15 writes the weights next to the graph (torch.onnx.export's default external_data=True, which
++    rsl_rl keeps): policy.onnx would only be the graph, and policy.onnx.data the weights. Fold them back into
++    policy.onnx: one self-contained file for the robot side and the release, whose sha256 covers the weights."""
++    import onnx
++
++    graph_only = onnx.load(path, load_external_data=False)
++    files = {e.value for t in graph_only.graph.initializer for e in t.external_data if e.key == "location"}
++    if not files:
++        return
++    onnx.save_model(onnx.load(path), path, save_as_external_data=False)  # onnx.load reads the external files
++    for name in files:
++        os.remove(os.path.join(os.path.dirname(path), name))
++
++
++def rollout_observations(env, policy, steps):
++    """[P3.4] The observations the policy meets: `steps` policy steps of the training policy itself in the nominal env
++    (commands resampled as in training). Returns obs [T, N, D], its actions [T, N, A] and dones [T, N] (dones[t]: the
++    env was reset after step t, so obs[t + 1] starts a new episode)."""
++    obs = env.reset()
++    policy.reset()
++    seq_obs, seq_act, seq_done = [], [], []
++    with torch.no_grad():
++        for _ in range(steps):
++            actions = policy(obs)
++            seq_obs.append(obs["policy"].clone())
++            seq_act.append(actions.clone())
++            obs, _, dones, _ = env.step(actions)
++            policy.reset(dones)
++            seq_done.append(dones.clone())
++    return torch.stack(seq_obs), torch.stack(seq_act), torch.stack(seq_done)
++
++
++def sequence_error(step, reset, obs, ref, dones=None):
++    """[P3.4] max |step(obs[t, n]) - ref[t, n]|, feeding each env's sequence one observation [1, D] at a time (as on the
++    robot), reset() at its start and after each of its resets."""
++    err = 0.0
++    for n in range(obs.shape[1]):
++        reset()
++        for t in range(obs.shape[0]):
++            if t > 0 and dones is not None and bool(dones[t - 1, n]):
++                reset()
++            out = np.asarray(step(obs[t, n][None]))
++            err = max(err, float(np.abs(out - ref[t, n][None].numpy()).max()))
++    return err
++
++
+ def main():
+     p = argparse.ArgumentParser()
+     p.add_argument("-e", "--exp_name", type=str, default="go2-walking")
+     p.add_argument("--ckpt", type=int, required=True)
+     p.add_argument("--log_dir", type=str, default=None, help="default: logs/<exp_name>")
++    # [P3.4] ONNX and the checks of the exported files
++    p.add_argument("--onnx", action="store_true", help="also write policy.onnx (and check it with onnxruntime)")
++    p.add_argument("--check-steps", type=int, default=200, help="rollout length of the real-observation check")
++    p.add_argument("--check-envs", type=int, default=8, help="envs of the real-observation check")
+     args = p.parse_args()
+ 
+     log_dir = args.log_dir or os.path.join("logs", args.exp_name)
+@@ -116,39 +207,88 @@
+     gs.init(backend=gs.cpu, logging_level="warning")
+     reward_cfg["reward_scales"] = {}
+     nominal_world(env_cfg, obs_cfg)
+-    env = Go2Env(num_envs=1, env_cfg=env_cfg, obs_cfg=obs_cfg, reward_cfg=reward_cfg, command_cfg=command_cfg)
++    # [P3.4] several envs: the real-observation check rolls them out (the deploy config does not depend on their number)
++    env = Go2Env(num_envs=max(1, args.check_envs), env_cfg=env_cfg, obs_cfg=obs_cfg, reward_cfg=reward_cfg,
++                 command_cfg=command_cfg)
+ 
+     runner = OnPolicyRunner(env, train_cfg, log_dir=None, device=gs.device)
+     infos = runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt")) or {}
+     runner.export_policy_to_jit(out_dir, "policy.pt")
++    onnx_path = os.path.join(out_dir, "policy.onnx")
++    if args.onnx:  # [P3.4]
++        try:
++            runner.export_policy_to_onnx(out_dir, "policy.onnx")
++            single_file_onnx(onnx_path)
++        except ImportError as e:
++            raise SystemExit(f"--onnx: {e}\npip install onnx onnxscript onnxruntime") from e
++    else:  # the policy.onnx of an earlier export would not match policy.pt any more
++        stale = [f for f in (onnx_path, onnx_path + ".data") if os.path.exists(f)]
++        for f in stale:
++            os.remove(f)
++        if stale:
++            print(f"removed {', '.join(os.path.basename(f) for f in stale)} of an earlier export (no --onnx this time)")
+ 
+     policy = runner.get_inference_policy(device="cpu")
+     curriculum = infos.get("curriculum")  # [P3.1] None for runs from before P3.1
+     deploy_cfg = make_deploy_cfg(env, recurrent=policy.is_recurrent, curriculum=curriculum)
++
++    # Check: the exported network gives the same actions as the training policy (deterministic mean).
++    # [P1.6] Over 100 consecutive steps from a reset, one observation at a time, as on the robot: for a recurrent
++    # policy this also checks that the export carries its memory from one call to the next.
++    # [P3.4] Same for policy.onnx, and both again on the observations of a rollout of the policy (a real state
++    # distribution, with the resets of the episodes).
++    exports = {"policy.pt": torch.jit.load(os.path.join(out_dir, "policy.pt"), map_location="cpu")}
++    if args.onnx:
++        exports["policy.onnx"] = OnnxPolicy(onnx_path)
++    rollout_obs, rollout_act, rollout_done = rollout_observations(env, policy, args.check_steps)
++    random_obs = torch.randn(100, 1, env.obs_buf.shape[-1])
++    with torch.no_grad():
++        policy.reset()
++        random_ref = torch.stack([policy(TensorDict({"policy": o}, batch_size=[1])) for o in random_obs])
++    checks = {}
++    with torch.no_grad():
++        for name, net in exports.items():
++            step = (lambda o, net=net: net(o).numpy()) if name == "policy.pt" else (lambda o, net=net: net(o.numpy()))
++            checks[name] = {
++                "random_100": sequence_error(step, net.reset, random_obs, random_ref),
++                f"rollout_{rollout_obs.shape[1]}x{rollout_obs.shape[0]}": sequence_error(
++                    step, net.reset, rollout_obs, rollout_act, rollout_done),
++            }
++    worst = max(err for c in checks.values() for err in c.values())
++    hashes = {name: sha256_file(os.path.join(out_dir, name)) for name in exports}
++    manifest = {}
++    if os.path.isfile(os.path.join(log_dir, "manifest.json")):
++        with open(os.path.join(log_dir, "manifest.json")) as f:
++            manifest = json.load(f)
++
+     deploy_cfg["source"] = {
+         "exp_name": args.exp_name, "ckpt": args.ckpt,
+         "genesis": gs.__version__, "rsl_rl": metadata.version("rsl-rl-lib"), "torch": torch.__version__,
++        # [P3.4] provenance and the checks of the exported files
++        "git_commit": manifest.get("git_hash"), "git_dirty": manifest.get("git_dirty"),
++        "exported": now(), "sha256": hashes,
++        "max_abs_error_vs_training_policy": {name: max(c.values()) for name, c in checks.items()},
+     }
+     if env.privileged_layout:  # [P3.3] for the record: what the critic read during training (not deployed)
+         deploy_cfg["source"]["critic_privileged"] = [name for name, _ in env.privileged_layout]
+     with open(os.path.join(out_dir, "deploy_cfg.json"), "w") as f:
+         json.dump(deploy_cfg, f, indent=2)
++    report = {"exp_name": args.exp_name, "ckpt": args.ckpt, "exported": deploy_cfg["source"]["exported"],
++              "tolerance": EXPORT_TOL, "passed": bool(np.isfinite(worst) and worst <= EXPORT_TOL),
++              "max_abs_error": checks, "sha256": {**hashes, "deploy_cfg.json": sha256_file(
++                  os.path.join(out_dir, "deploy_cfg.json"))},
++              "recurrent": bool(policy.is_recurrent), "obs_dim": int(env.obs_buf.shape[-1]),
++              "onnx_io": ({"inputs": exports["policy.onnx"].input_shapes, "outputs": exports["policy.onnx"].outputs}
++                          if args.onnx else None),
++              "git_commit": manifest.get("git_hash"), "git_dirty": manifest.get("git_dirty")}
++    with open(os.path.join(out_dir, "export_check.json"), "w") as f:
++        json.dump(report, f, indent=2)
+ 
+-    # Check: the exported network gives the same actions as the training policy (deterministic mean).
+-    # [P1.6] Over 100 consecutive steps from a reset, one observation at a time, as on the robot: for a recurrent
+-    # policy this also checks that the export carries its memory from one call to the next.
+-    jit = torch.jit.load(os.path.join(out_dir, "policy.pt"), map_location="cpu")
+-    obs = torch.randn(100, 1, env.obs_buf.shape[-1])
+-    err = 0.0
+-    with torch.no_grad():
+-        policy.reset()
+-        jit.reset()
+-        for o in obs:
+-            ref = policy(TensorDict({"policy": o}, batch_size=[1]))
+-            err = max(err, (jit(o) - ref).abs().max().item())
+     kind = "recurrent" if policy.is_recurrent else "MLP"
+-    print(f"exported to {out_dir}: policy.pt ({kind}), deploy_cfg.json   "
+-          f"(max |jit - policy| over 100 steps: {err:.2e})")
++    files = ", ".join(exports) + ", deploy_cfg.json, export_check.json"
++    print(f"exported to {out_dir}: {files} ({kind})")
++    for name, c in checks.items():  # [P3.4]
++        print(f"  {name:11s} max |export - policy|: " + ", ".join(f"{k} {v:.2e}" for k, v in c.items()))
+     if "command_ranges_configured" in deploy_cfg:  # [P3.1]
+         print(f"command ranges reached by the command curriculum (deployed): {deploy_cfg['command_ranges']}   "
+               f"configured: {deploy_cfg['command_ranges_configured']}")
+@@ -156,8 +296,10 @@
+         t = deploy_cfg["training_terrain"]
+         print(f"trained on terrain {t['types']} ({t['num_levels']} levels, up to {t['max_slope_deg']:g} deg): "
+               f"mean level {t['mean_level']}, top level share {t['top_level_share']:.0%}")
+-    if not np.isfinite(err) or err > 1e-4:
+-        raise SystemExit("exported network does not match the training policy")
++    if manifest.get("git_dirty"):  # [P3.4]
++        print("WARNING: the run was trained from uncommitted code (manifest.json git_dirty): not a clean baseline")
++    if not report["passed"]:
++        raise SystemExit(f"exported network does not match the training policy (worst {worst:.2e} > {EXPORT_TOL:g})")
+ 
+ 
+ if __name__ == "__main__":
+diff -ruN a/go2_provenance.py b/go2_provenance.py
+--- a/go2_provenance.py	1970-01-01 09:00:00.000000000 +0900
++++ b/go2_provenance.py	2026-11-05 08:17:21.696145795 +0900
+@@ -0,0 +1,107 @@
++"""
++go2_provenance.py - [P3.4] Where a run, an export and a card come from: git state, code fingerprint, file hashes.
++Standard library only (no Genesis, no torch), so every script can use it: go2_train.py writes the run's manifest
++with it, go2_export.py hashes the exported files, go2_card.py checks that the code has not changed since training.
++
++    python go2_provenance.py                 # this folder: git commit, dirty flag, package versions, code fingerprint
++    python go2_provenance.py logs/go2-v1.0   # compare the current code with the code that trained the run
++"""
++
++import datetime
++import hashlib
++import json
++import os
++import platform
++import subprocess
++import sys
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++
++
++def sha256_file(path, chunk=1 << 20):
++    """sha256 hex digest of a file."""
++    h = hashlib.sha256()
++    with open(path, "rb") as f:
++        for block in iter(lambda: f.read(chunk), b""):
++            h.update(block)
++    return h.hexdigest()
++
++
++def code_fingerprint(folder=HERE):
++    """{file: sha256[:16]} of every .py file of the code folder (not recursive).
++    The code a run used, even without git."""
++    return {name: sha256_file(os.path.join(folder, name))[:16]
++            for name in sorted(os.listdir(folder)) if name.endswith(".py")}
++
++
++def git_info(folder=HERE):
++    """Git state of the repository holding `folder`: {"commit", "dirty", "untracked_py", "diff"}.
++    All values are None without git (not installed, or not a repository).
++    dirty = tracked files differ from the commit; untracked_py = .py files git does not track (code a clone would miss);
++    diff = `git diff HEAD` when dirty (what a checkout of the commit lacks)."""
++    def git(*args):
++        return subprocess.check_output(["git", *args], cwd=folder, stderr=subprocess.DEVNULL).decode()
++
++    try:
++        commit = git("rev-parse", "HEAD").strip()
++        dirty = bool(git("status", "--porcelain", "--untracked-files=no").strip())
++        untracked = [line[3:] for line in git("status", "--porcelain").splitlines() if line.startswith("??")]
++        return {"commit": commit, "dirty": dirty, "untracked_py": [f for f in untracked if f.endswith(".py")],
++                "diff": git("diff", "HEAD") if dirty else ""}
++    except (OSError, subprocess.CalledProcessError):
++        return {"commit": None, "dirty": None, "untracked_py": None, "diff": None}
++
++
++def environment():
++    """Interpreter, host and package versions (the packages that are importable)."""
++    out = {"python": sys.version.split()[0], "host": platform.node(), "platform": platform.platform()}
++    from importlib import metadata
++
++    for dist in ("torch", "genesis-world", "rsl-rl-lib", "tensordict", "numpy", "onnx", "onnxruntime"):
++        try:
++            out[dist] = metadata.version(dist)
++        except metadata.PackageNotFoundError:
++            pass
++    return out
++
++
++def now():
++    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
++
++
++def compare_code(manifest, folder=HERE):
++    """Files whose content differs between the run's manifest fingerprint and `folder` now: (changed, added, removed).
++    None when the manifest has no fingerprint (runs trained before P3.4)."""
++    then = (manifest or {}).get("code_sha256")
++    if not then:
++        return None
++    current = code_fingerprint(folder)
++    changed = sorted(f for f in then if f in current and current[f] != then[f])
++    return changed, sorted(set(current) - set(then)), sorted(set(then) - set(current))
++
++
++def main():
++    if len(sys.argv) > 1:
++        path = os.path.join(sys.argv[1], "manifest.json")
++        with open(path) as f:
++            manifest = json.load(f)
++        diff = compare_code(manifest)
++        print(f"{path}: commit {manifest.get('git_hash')} dirty {manifest.get('git_dirty')}")
++        if diff is None:
++            print("no code fingerprint in this manifest (trained before P3.4)")
++        else:
++            changed, added, removed = diff
++            print("code unchanged since training" if not (changed or removed) else
++                  f"changed since training: {changed}; removed: {removed}")
++            if added:
++                print(f"new files since training (not used by it): {added}")
++        return
++    info = git_info()
++    print(f"commit {info['commit']}  dirty {info['dirty']}  untracked .py {info['untracked_py']}")
++    print("  ".join(f"{k} {v}" for k, v in environment().items()))
++    for name, digest in code_fingerprint().items():
++        print(f"  {digest}  {name}")
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN a/go2_report.py b/go2_report.py
+--- a/go2_report.py	1970-01-01 09:00:00.000000000 +0900
++++ b/go2_report.py	2026-11-05 08:17:21.696156245 +0900
+@@ -0,0 +1,400 @@
++"""
++go2_report.py - [P3.4] The harness report: one command runs the standard evaluation set of go2_metrics.py on one
++checkpoint and collects one summary (REPORT.md, summary.json and the plots) in logs/<exp>/report/. The same command then
++measures every later candidate against the baseline (--ref).
++
++    python go2_report.py -e go2-v1.0 --ckpt 1999                          # the standard set (GPU: est. 10-20 min)
++    python go2_report.py -e go2-v1.0 --ckpt 1999 --gate ~/unitree_mujoco  # + the unitree_mujoco gate suite
++    python go2_report.py -e go2-v2 --ckpt 2999 --ref go2-v1.0             # a candidate, side by side with v1.0
++    python go2_report.py -e go2-v1.0 --ckpt 1999 --collect                # rebuild the report from existing CSVs
++
++The standard set (WORLDS), one go2_metrics.py run each (a separate process, its log in report/logs/):
++    flat         nominal world: no randomization, no noise, 20 ms latency           metrics_ckptN_seedS.csv
++    flat_dr      the run's training randomization, noise and pushes (--keep_dr)       ..._dr.csv
++    grid         the run's own tiles (the default grid for a flat-trained run)         ..._grid.csv
++    grid_unseen  new random instances of the tiles (--terrain_set seed=1)              ..._grid_unseen.csv
++    slope+10 ... slope-25   the command grid on a plane (forward = uphill for +)       ..._slope+10.csv ...
++Headline numbers (summary.json "headline", the REPORT.md tables, the config card of go2_card.py):
++    flat, flat_dr   per key command: falls, lin_err, yaw_err, vx_meas, CoT, slip_v; all bins: falls
++    grid, unseen    per tile type: the frontier = the last level of the run of levels, from the lowest, whose
++                    through[%] >= FRONTIER_THROUGH (80); through at the top level; falls. All tiles: mean through
++    slopes          at (0.5, 0, 0): vx_meas, lin_err, through, falls, CoT, slip_v; standing (0, 0, 0): falls, creep
++    gate            go2_sim_suite.py --suite gate in unitree_mujoco (needs go2_export.py first): runs as expected
++--ref EXP adds a table "against EXP" (its report/summary.json) with the change of every headline number; --ref also
++takes a frozen baseline folder (baselines/v1.0, from go2_card.py --freeze). No Genesis in this process: go2_metrics.py
++runs as a subprocess, with its own Genesis.
++"""
++
++import argparse
++import csv
++import json
++import math
++import os
++import shutil
++import subprocess
++import sys
++import time
++
++from go2_provenance import now
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++SLOPES = (10, -10, 20, -20, 25, -25)
++WORLDS = {  # name: (go2_metrics.py arguments, file tag)
++    "flat": ([], ""),
++    "flat_dr": (["--keep_dr", "--tag", "dr"], "dr"),
++    "grid": (["--terrain", "grid"], "grid"),
++    "grid_unseen": (["--terrain", "grid", "--terrain_set", "seed=1", "--tag", "unseen"], "grid_unseen"),
++    **{f"slope{d:+d}": (["--slope", str(d)], f"slope{d:+d}") for d in SLOPES},
++}
++FLAT_BINS = ((0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (1.0, 0.0, 0.0), (-0.5, 0.0, 0.0), (0.0, 0.3, 0.0), (0.0, 0.0, 0.5))
++FLAT_METRICS = ("lin_err[m/s]", "yaw_err[rad/s]", "vx_meas", "CoT[-]", "slip_v[cm/s]")
++SLOPE_METRICS = ("vx_meas", "lin_err[m/s]", "through[%]", "CoT[-]", "slip_v[cm/s]")
++FRONTIER_THROUGH = 80.0  # [%] a tile level counts as passed above this success rate
++# headline numbers compared by --ref: (key, better) with better "lower", "higher" or "" (no direction)
++HEADLINE_BETTER = {"falls": "lower", "lin_err": "lower", "yaw_err": "lower", "CoT": "lower", "slip_v": "lower",
++                   "frontier": "higher", "through": "higher", "vx_meas": "", "as expected": "higher"}
++
++
++def number(text):
++    try:
++        return float(text)
++    except (TypeError, ValueError):
++        return math.nan
++
++
++def fmt(x, digits=3):
++    if isinstance(x, str):
++        return x
++    return "n/a" if x is None or (isinstance(x, float) and math.isnan(x)) else f"{x:.{digits}g}"
++
++
++def read_csv(path):
++    with open(path, newline="") as f:
++        return list(csv.DictReader(f))
++
++
++def command(row):
++    return tuple(round(number(row.get(k, 0.0)), 3) for k in ("vx", "vy", "wz"))
++
++
++def at(rows, cmd):
++    """The row of one command (dh = 0 for runs with the body-height command), or None."""
++    for r in rows:
++        dh = number(r["dh"]) if r.get("dh") not in (None, "") else 0.0
++        if command(r) == tuple(round(c, 3) for c in cmd) and abs(dh) < 1e-9:
++            return r
++    return None
++
++
++def falls(rows):
++    a = b = 0
++    for r in rows:
++        x, _, y = (r.get("falls") or "0/0").partition("/")
++        a, b = a + int(x or 0), b + int(y or 0)
++    return [a, b]
++
++
++def value(row, metric):
++    return number(row.get(f"{metric}_mean")) if row else math.nan
++
++
++# ---------------------------------------------------------------------------------------------------------------------
++# One summary per world
++# ---------------------------------------------------------------------------------------------------------------------
++def summarize_flat(rows):
++    bins = {}
++    for cmd in FLAT_BINS:
++        r = at(rows, cmd)
++        if r is not None:
++            bins[" ".join(f"{c:g}" for c in cmd)] = {"falls": r["falls"], **{m: value(r, m) for m in FLAT_METRICS}}
++    return {"bins": bins, "falls": falls(rows)}
++
++
++def summarize_grid(rows):
++    types = {}
++    for t in dict.fromkeys(r["terrain"] for r in rows):
++        rs = sorted((r for r in rows if r["terrain"] == t), key=lambda r: int(r["level"]))
++        levels = [int(r["level"]) for r in rs]
++        through = [value(r, "through[%]") for r in rs]
++        frontier = None
++        for lvl, x in zip(levels, through):
++            if not x >= FRONTIER_THROUGH:  # NaN counts as not passed
++                break
++            frontier = lvl
++        types[t] = {"levels": levels, "through": through, "frontier": frontier, "top_level": levels[-1],
++                    "top_through": through[-1], "falls": falls(rs)}
++    finite = [x for t in types.values() for x in t["through"] if not math.isnan(x)]
++    return {"types": types, "mean_through": sum(finite) / len(finite) if finite else math.nan, "falls": falls(rows)}
++
++
++def summarize_slope(rows):
++    walk, stand = at(rows, (0.5, 0.0, 0.0)), at(rows, (0.0, 0.0, 0.0))
++    return {"walk_0.5": {"falls": walk["falls"] if walk else "n/a", **{m: value(walk, m) for m in SLOPE_METRICS}},
++            "stand": {"falls": stand["falls"] if stand else "n/a", "vx_meas": value(stand, "vx_meas")},
++            "falls": falls(rows)}
++
++
++def summarize(world, rows):
++    if world.startswith("grid"):
++        return summarize_grid(rows)
++    if world.startswith("slope"):
++        return summarize_slope(rows)
++    return summarize_flat(rows)
++
++
++def gate_summary(path):
++    """go2_sim_suite.py summary.csv -> {"as expected": "k/n", "not_ok": [case (why)], "file": path}."""
++    rows = read_csv(path)
++    bad = [f"{r['case']} run {r['run']}: {r['why']}" for r in rows if r.get("result") != "ok"]
++    return {"as expected": f"{len(rows) - len(bad)}/{len(rows)}", "not_ok": bad, "file": path}
++
++
++def headline(worlds, gate):
++    """The numbers a baseline is judged and compared by: {key: value} (strings for counts "a/b")."""
++    h = {}
++    for name in ("flat", "flat_dr"):
++        w = worlds.get(name)
++        if w:
++            h[f"{name}: falls (all bins)"] = "{}/{}".format(*w["falls"])
++            b = w["bins"].get("0.5 0 0", {})
++            h[f"{name}: lin_err @ 0.5 m/s [m/s]"] = b.get("lin_err[m/s]", math.nan)
++            if name == "flat":
++                h["flat: CoT @ 0.5 m/s"] = b.get("CoT[-]", math.nan)
++                h["flat: slip_v @ 0.5 m/s [cm/s]"] = b.get("slip_v[cm/s]", math.nan)
++                h["flat: yaw_err @ 0.5 rad/s [rad/s]"] = w["bins"].get("0 0 0.5", {}).get("yaw_err[rad/s]", math.nan)
++    for name in ("grid", "grid_unseen"):
++        w = worlds.get(name)
++        if w:
++            for t, d in w["types"].items():
++                h[f"{name}: frontier {t}"] = d["frontier"] if d["frontier"] is not None else -1
++            h[f"{name}: mean through [%]"] = w["mean_through"]
++    for d in SLOPES:
++        w = worlds.get(f"slope{d:+d}")
++        if w:
++            h[f"slope{d:+d}: vx_meas @ 0.5 m/s"] = w["walk_0.5"]["vx_meas"]
++            h[f"slope{d:+d}: through @ 0.5 m/s [%]"] = w["walk_0.5"]["through[%]"]
++            h[f"slope{d:+d}: falls (all bins)"] = "{}/{}".format(*w["falls"])
++    if gate:
++        h["gate: runs as expected"] = gate["as expected"]
++    return h
++
++
++def better(key):
++    for word, direction in HEADLINE_BETTER.items():
++        if word in key:
++            return direction
++    return ""
++
++
++def ratio(text):
++    a, _, b = str(text).partition("/")
++    return number(a) / number(b) if number(b) else math.nan
++
++
++def reps_text(reps):
++    """20 -> "20"; [2, 20] (worlds measured with different --reps) -> "2 to 20 (worlds differ)"."""
++    return f"{reps[0]} to {reps[-1]} (worlds differ)" if isinstance(reps, list) else str(reps)
++
++
++def as_number(x):
++    """Headline value -> float: a count "a/b" -> its share, None (n/a in summary.json) -> NaN."""
++    if isinstance(x, str):
++        return ratio(x)
++    return math.nan if x is None else float(x)
++
++
++def json_safe(x):
++    """numpy -> Python, NaN -> None, recursively: summary.json stays strict JSON (readable by jq, JavaScript)."""
++    if type(x).__module__ == "numpy":
++        x = x.tolist()
++    if isinstance(x, float) and math.isnan(x):
++        return None
++    if isinstance(x, dict):
++        return {k: json_safe(v) for k, v in x.items()}
++    if isinstance(x, (list, tuple)):
++        return [json_safe(v) for v in x]
++    return x
++
++
++# ---------------------------------------------------------------------------------------------------------------------
++# REPORT.md
++# ---------------------------------------------------------------------------------------------------------------------
++def table(header, rows):
++    out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
++    out += ["| " + " | ".join(str(x) for x in r) + " |" for r in rows]
++    return "\n".join(out)
++
++
++def write_report(path, summary, ref=None):
++    s, w = summary, summary["worlds"]
++    lines = [f"# Harness report: {s['exp']}, checkpoint {s['ckpt']}", "",
++             f"{s['created']} · evaluation seed {s['seed']} · {reps_text(s['reps'])} envs per bin · git commit "
++             f"{s.get('git_commit') or 'n/a'} · `go2_report.py` (P3.4)", ""]
++    for name, label in (("flat", "Flat ground, nominal world"), ("flat_dr", "Flat ground, training randomization")):
++        if name in w:
++            rows = [[k, b["falls"]] + [fmt(b[m]) for m in FLAT_METRICS] for k, b in w[name]["bins"].items()]
++            lines += [f"## {label} (`{name}`)", "", table(["vx vy wz", "falls"] + list(FLAT_METRICS), rows),
++                      "", f"All bins: {w[name]['falls'][0]}/{w[name]['falls'][1]} fallen.", ""]
++    for name, label in (("grid", "Terrain grid, own tiles"), ("grid_unseen", "Terrain grid, unseen tiles")):
++        if name in w:
++            rows = [[t, d["frontier"] if d["frontier"] is not None else "below the lowest",
++                     f"{fmt(d['top_through'])} (level {d['top_level']})", "{}/{}".format(*d["falls"]),
++                     " ".join(fmt(x, 2) for x in d["through"])] for t, d in w[name]["types"].items()]
++            lines += [f"## {label} (`{name}`)", "",
++                      table(["type", f"frontier (through >= {FRONTIER_THROUGH:g} %)", "through at the top",
++                             "falls", "through per level"], rows),
++                      "", f"Mean through over all tiles: {fmt(w[name]['mean_through'])} %.", ""]
++    slopes = [d for d in SLOPES if f"slope{d:+d}" in w]
++    if slopes:
++        rows = []
++        for d in slopes:
++            x = w[f"slope{d:+d}"]
++            rows.append([f"{d:+d} deg", x["walk_0.5"]["falls"]] + [fmt(x["walk_0.5"][m]) for m in SLOPE_METRICS]
++                        + [x["stand"]["falls"], fmt(x["stand"]["vx_meas"])])
++        lines += ["## Slopes (`--slope`): walking at 0.5 m/s, and standing", "",
++                  table(["slope", "falls"] + [f"{m} @0.5" for m in SLOPE_METRICS] + ["standing falls",
++                                                                                    "standing creep vx [m/s]"], rows),
++                  "", "+ = facing uphill, − = facing downhill.", ""]
++    if s.get("gate"):
++        g = s["gate"]
++        lines += ["## unitree_mujoco gate suite (`go2_sim_suite.py --suite gate`)", "",
++                  f"Runs as expected: **{g['as expected']}** (`{g['file']}`)."]
++        lines += [f"- not as expected: {x}" for x in g["not_ok"]] + [""]
++    if ref:
++        rows = []
++        for k, v in s["headline"].items():
++            if k not in ref["headline"]:
++                continue
++            r = ref["headline"][k]
++            a, b = as_number(r), as_number(v)
++            if math.isnan(a) or math.isnan(b):
++                delta = "n/a"
++            elif isinstance(v, str):  # counts "a/b": the change of the share, in percentage points
++                delta = f"{100 * (b - a):+.0f} % pts"
++            else:
++                delta = f"{b - a:+.3g}"
++            rows.append([k, fmt(r), fmt(v), delta, better(k)])
++        lines += [f"## Against `{ref['exp']}` (checkpoint {ref['ckpt']})", "",
++                  table(["headline", ref["exp"], s["exp"], "change", "better"], rows), ""]
++    if s.get("plots"):
++        lines += ["## Plots", ""] + [f"- `plots/{p}`" for p in s["plots"]] + [""]
++    if s.get("missing"):
++        lines += [f"Missing from the standard set: {', '.join(s['missing'])}.", ""]
++    with open(path, "w") as f:
++        f.write("\n".join(lines))
++
++
++# ---------------------------------------------------------------------------------------------------------------------
++def main():
++    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    p.add_argument("-e", "--exp_name", required=True)
++    p.add_argument("--ckpt", type=int, required=True)
++    p.add_argument("--log_dir", default=None, help="default: logs/<exp_name>")
++    p.add_argument("--seed", type=int, default=0, help="go2_metrics.py --seed (evaluation seed)")
++    p.add_argument("--reps", type=int, default=20, help="go2_metrics.py --reps (envs per bin)")
++    p.add_argument("--worlds", nargs="+", default=list(WORLDS), choices=list(WORLDS), help="a subset of the set")
++    p.add_argument("--cpu", action="store_true", help="go2_metrics.py --cpu (tests; the standard set wants a GPU)")
++    p.add_argument("--grid-types", nargs="+", default=None, help="go2_metrics.py --types for the grid worlds (tests)")
++    p.add_argument("--grid-levels", type=int, nargs="+", default=None, help="go2_metrics.py --levels (tests)")
++    p.add_argument("--collect", action="store_true", help="no evaluation: build the report from the existing CSVs")
++    p.add_argument("--skip-existing", action="store_true", help="evaluate only the worlds whose CSV is missing")
++    p.add_argument("--gate", default=None, metavar="UNITREE_MUJOCO",
++                   help="also run go2_sim_suite.py --suite gate with this unitree_mujoco checkout (export first)")
++    p.add_argument("--gate-summary", default=None, help="use this go2_sim_suite.py summary.csv instead of running it")
++    p.add_argument("--ref", default=None, metavar="EXP",
++                   help="compare with this run's report (logs/EXP/report), or a frozen one (e.g. baselines/v1.0)")
++    args = p.parse_args()
++
++    ref = None
++    if args.ref:  # read first: a typo must not wait for the whole evaluation
++        # a run name (logs/<ref>), a run folder, a folder holding summary.json (baselines/v1.0) or the file itself
++        ref_path = next((c for c in (args.ref, os.path.join(args.ref, "summary.json"),
++                                     os.path.join(args.ref, "report", "summary.json"),
++                                     os.path.join("logs", args.ref, "report", "summary.json")) if os.path.isfile(c)),
++                        None)
++        if ref_path is None:
++            raise SystemExit(f"--ref: no summary.json for {args.ref} (run go2_report.py on that run first, or give "
++                             f"the folder of a frozen baseline, e.g. baselines/v1.0)")
++        with open(ref_path) as f:
++            ref = json.load(f)
++
++    log_dir = args.log_dir or os.path.join("logs", args.exp_name)
++    out = os.path.join(log_dir, "report")
++    os.makedirs(os.path.join(out, "logs"), exist_ok=True)
++    os.makedirs(os.path.join(out, "plots"), exist_ok=True)
++    stem = os.path.join(log_dir, f"metrics_ckpt{args.ckpt}_seed{args.seed}")
++    csv_of = lambda world: stem + (f"_{WORLDS[world][1]}" if WORLDS[world][1] else "") + ".csv"
++
++    t_start = time.monotonic()
++    for world in args.worlds:
++        if args.collect or (args.skip_existing and os.path.isfile(csv_of(world))):
++            continue
++        cmd = [sys.executable, os.path.join(HERE, "go2_metrics.py"), "-e", args.exp_name, "--ckpt", str(args.ckpt),
++               "--seed", str(args.seed), "--reps", str(args.reps), "--log_dir", log_dir] + WORLDS[world][0]
++        if args.cpu:
++            cmd.append("--cpu")
++        if world.startswith("grid"):
++            cmd += (["--types", *args.grid_types] if args.grid_types else [])
++            cmd += (["--levels", *map(str, args.grid_levels)] if args.grid_levels else [])
++        t0 = time.monotonic()
++        print(f"[{world}] {' '.join(cmd[1:])}", flush=True)
++        with open(os.path.join(out, "logs", f"{world}.log"), "w") as logf:
++            code = subprocess.call(cmd, stdout=logf, stderr=subprocess.STDOUT)
++        print(f"[{world}] {'done' if code == 0 else f'FAILED (exit {code}), see report/logs/{world}.log'} in "
++              f"{time.monotonic() - t0:.0f} s", flush=True)
++
++    gate = None
++    if args.gate:
++        exported = os.path.join(log_dir, "exported")
++        if not os.path.isfile(os.path.join(exported, "policy.pt")):
++            raise SystemExit(f"--gate: no export in {exported}: "
++                             f"run go2_export.py -e {args.exp_name} --ckpt {args.ckpt} --onnx")
++        gate_dir = os.path.join(out, "gate")
++        cmd = [sys.executable, os.path.join(HERE, "go2_sim_suite.py"), "--policy", exported, "--um", args.gate,
++               "--suite", "gate", "--out", gate_dir]
++        print(f"[gate] {' '.join(cmd[1:])}", flush=True)
++        subprocess.call(cmd)
++        args.gate_summary = os.path.join(gate_dir, "summary.csv")
++    if args.gate_summary:
++        if not os.path.isfile(args.gate_summary):
++            raise SystemExit(f"no gate summary at {args.gate_summary}")
++        gate = gate_summary(args.gate_summary)
++
++    worlds, missing, plots, reps = {}, [], [], set()
++    for world in WORLDS:
++        path = csv_of(world)
++        if not os.path.isfile(path):
++            missing.append(world)
++            continue
++        rows = read_csv(path)
++        worlds[world] = summarize(world, rows)
++        # envs per bin, as measured: the denominator of "falls" (a report --collect'ed from older CSVs keeps theirs)
++        reps |= {int(number(str(r["falls"]).partition("/")[2])) for r in rows if "/" in str(r.get("falls", ""))}
++        tag = WORLDS[world][1]
++        name = f"ckpt{args.ckpt}_seed{args.seed}" + (f"_{tag}" if tag else "")
++        for kind in ("terrain", "gait", "spectra"):
++            src = os.path.join(log_dir, f"{kind}_{name}.png")
++            if os.path.isfile(src):
++                shutil.copy(src, os.path.join(out, "plots"))
++                plots.append(os.path.basename(src))
++    manifest = {}
++    if os.path.isfile(os.path.join(log_dir, "manifest.json")):
++        with open(os.path.join(log_dir, "manifest.json")) as f:
++            manifest = json.load(f)
++    reps = sorted(reps) if reps else [args.reps]
++    summary = {"exp": args.exp_name, "ckpt": args.ckpt, "seed": args.seed,
++               "reps": reps[0] if len(reps) == 1 else reps, "created": now(),
++               "git_commit": manifest.get("git_hash"), "worlds": worlds, "gate": gate,
++               "headline": headline(worlds, gate), "missing": missing, "plots": plots,
++               "frontier_through": FRONTIER_THROUGH}
++    with open(os.path.join(out, "summary.json"), "w") as f:
++        json.dump(json_safe(summary), f, indent=2, allow_nan=False)
++    write_report(os.path.join(out, "REPORT.md"), summary, ref)
++    print(f"\nreport: {os.path.join(out, 'REPORT.md')} and summary.json (worlds: {len(worlds)}"
++          + (f"; missing: {', '.join(missing)}" if missing else "") + f"; {time.monotonic() - t_start:.0f} s)")
++    for k, v in summary["headline"].items():
++        print(f"  {k:42s} {fmt(v)}")
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN a/go2_train.py b/go2_train.py
+--- a/go2_train.py	2026-11-05 08:17:21.694288939 +0900
++++ b/go2_train.py	2026-11-05 08:17:21.696292368 +0900
+@@ -26,21 +26,43 @@
+ from go2_commands import LIN_DEADZONE, ANG_DEADZONE  # [P1.1] same deadzone as at deployment
+ from go2_terrain import terrain_config  # [P3.1]
+ 
+-import subprocess, json, sys, torch
++import json, sys, torch
+ from importlib.metadata import version
+ 
+-def run_manifest(log_dir, cfgs):
++import go2_provenance  # [P3.4]
++
++
++def run_manifest(log_dir, cfgs, args=None):
++    """Provenance of the run, logs/<exp>/manifest.json (go2_card.py reads it).
++    [P3.4] Written even without git (git fields None), with the command line, the arguments, the host and GPU, and a
++    fingerprint of every .py file of the code folder, so go2_card.py can tell whether the code changed since training.
++    A dirty working tree also leaves logs/<exp>/git_diff.patch (what a checkout of the commit would lack)."""
++    git = go2_provenance.git_info()
+     meta = {
+-        "git_hash": subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip(),
+-        "git_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"]).strip()),
++        "git_hash": git["commit"],
++        "git_dirty": git["dirty"],
++        "git_untracked_py": git["untracked_py"],  # [P3.4] code files a clone of the commit would not have
+         "python": sys.version.split()[0],
+         "torch": torch.__version__, "cuda": torch.version.cuda,
+         "genesis": gs.__version__, "rsl_rl": version("rsl-rl-lib"),
++        "created": go2_provenance.now(),  # [P3.4]
++        "argv": sys.argv,
++        "args": vars(args) if args is not None else None,
++        "host": go2_provenance.environment()["host"],
++        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() and not getattr(args, "cpu", True) else None,
++        "code_sha256": go2_provenance.code_fingerprint(),
+         "cfgs": cfgs,
+     }
+     with open(f"{log_dir}/manifest.json", "w") as f:
+         json.dump(meta, f, indent=2, default=str)
+-
++    if git["dirty"]:
++        with open(f"{log_dir}/git_diff.patch", "w") as f:
++            f.write(git["diff"])
++        print(f"WARNING: uncommitted changes; the run records them in {log_dir}/git_diff.patch (commit before a "
++              f"baseline run: go2_card.py flags dirty runs)")
++    if git["untracked_py"]:
++        print(f"WARNING: untracked .py files {git['untracked_py']}: a checkout of the commit would lack them (commit "
++              f"them, or list them in .gitignore; go2_card.py flags them)")
+ 
+ 
+ def get_train_cfg(exp_name):
+@@ -459,9 +481,10 @@
+                              "clock inputs; drops feet_air_time)")
+     parser.add_argument("--energy", type=float, nargs="?", const=ENERGY_WEIGHT, default=None, metavar="W",
+                         help=f"[P2.5] mechanical power penalty -W * sum|tau qdot| (when given alone: {ENERGY_WEIGHT})")
+-    parser.add_argument("--set", nargs="+", default=[], metavar="GROUP.KEY=VALUE",
++    parser.add_argument("--set", nargs="+", action="extend", default=[], metavar="GROUP.KEY=VALUE",
+                         help="[P2] override any config entry last, e.g. reward.reward_scales.foot_clearance=0.5 "
+-                             "env.joint_friction=0.3 (groups: env, obs, reward, command, train)")
++                             "env.joint_friction=0.3 (groups: env, obs, reward, command, train). [P3.4] May be given "
++                             "several times: the lists add up")
+     # [P3.1] terrain and curricula (TEST_AND_TINKER_P3.md, section 4)
+     parser.add_argument("--terrain", action="store_true",
+                         help="[P3.1] train on the grid of terrain tiles with the game-inspired terrain curriculum "
+@@ -610,7 +633,7 @@
+         pickle.dump([env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg], f)
+     # run_manifest() was defined but never called; best effort, so a missing git repo never blocks training
+     try:
+-        run_manifest(log_dir, [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg])
++        run_manifest(log_dir, [env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg], args)  # [P3.4] + args
+     except Exception as e:  # noqa: BLE001
+         print(f"manifest not written: {e}")
+ 

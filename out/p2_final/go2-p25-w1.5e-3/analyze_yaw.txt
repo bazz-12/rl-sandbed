@@ -1,0 +1,159 @@
+mjtruth_suite_yaw_mu1_0: ground truth attached to B = mujoco_20261106_093257_suite_yaw_mu1_0
+
+=== A = genesis_go2-p25-w1.5e-3_yaw (genesis) ===
+policy go2-p25-w1.5e-3 ckpt 1999 | 29.9 s | profile yaw | scenario walk | truth: full
+modes: passive 0.0-1.0 s -> stand_up 1.0-4.6 s -> policy 4.6-25.8 s -> sit_down 25.8-28.3 s -> passive 28.3-29.9 s
+     1.000 s  -> stand_up (L1+R2, from passive)
+     4.600 s  -> policy (L1+A)
+     5.100 s  policy running
+     7.700 s  profile yaw started (16 s)
+    23.700 s  profile yaw ended: done
+    25.800 s  -> sit_down (L1+R1)
+    28.300 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              5.00 / 5.00 / 5.00
+  loop steps > 2x period                        0
+  state age p50 / p99 / max [ms]                0.00 / 0.00 / 0.00
+  control step p50 / p99 / max [ms]             0.11 / 21.57 / 45.33
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          0.0
+  policy step interval p50 / p99 / max [ms]     20.00 / 20.00 / 20.00
+  inference p50 / p99 / max [ms]                0.41 / 31.75 / 44.95
+  targets clipped to the joint range [steps]    35
+
+=== B = mujoco_20261106_093257_suite_yaw_mu1_0 (mujoco) ===
+policy go2-p25-w1.5e-3 ckpt 1999 | 32.0 s | profile yaw | scenario walk | truth: full
+modes: passive 0.3-1.3 s -> stand_up 1.3-4.9 s -> policy 4.9-26.1 s -> sit_down 26.1-28.6 s -> passive 28.6-32.3 s
+     1.263 s  -> stand_up (L1+R2, from passive)
+     4.863 s  -> policy (L1+A)
+     5.365 s  policy running
+     7.963 s  profile yaw started (16 s)
+    23.967 s  profile yaw ended: done
+    26.063 s  -> sit_down (L1+R1)
+    28.563 s  -> passive (sit-down done)
+timing:
+  loop period p50 / p99 / max [ms]              2.00 / 5.14 / 16.54
+  loop steps > 2x period                        784
+  state age p50 / p99 / max [ms]                1.05 / 5.01 / 10.05
+  control step p50 / p99 / max [ms]             0.38 / 4.90 / 16.37
+  stale-state steps (> 50 ms)                   0
+  steps reusing the previous state [%]          6.4
+  policy step interval p50 / p99 / max [ms]     20.00 / 22.05 / 22.26
+  inference p50 / p99 / max [ms]                3.86 / 9.14 / 13.53
+  targets clipped to the joint range [steps]    139
+
+--- stand: vx +0.00 vy +0.00 wz +0.00 (1.1 s) ---
+metric              A genesis               B mujoco
+vx_meas              0.000126     0.00177 (d+0.0016)
+vy_meas             -5.84e-06  -5.02e-05 (d-4.4e-05)
+wz_meas             -8.32e-07  -0.000109 (d-0.00011)
+lin_err[m/s]         0.000126     0.00177 (d+0.0016)
+yaw_err[rad/s]       8.32e-07   0.000109 (d+0.00011)
+vx_odo               0.000125     0.00163 (d+0.0015)
+lin_err_odo[m/s]     0.000125     0.00163 (d+0.0015)
+z[m]                    0.326      0.326 (d+5.2e-05)
+z_est[m]                0.325      0.325 (d-0.00027)
+pitch[deg]              -2.01         -2.33 (d-0.32)
+tilt_max[deg]            2.02            2.38 (+18%)
+drift[m]             0.000142     0.00193 (d+0.0018)
+yaw_drift[deg/s]     -4.7e-05    -0.00622 (d-0.0062)
+act_rate[rad/s]      0.000826         0.00107 (+29%)
+act_acc[rad/s2]       0.00374         0.00448 (+20%)
+hf>10Hz[%]            0.00491         0.0107 (+119%)
+tau_rms[Nm]              3.06             3.08 (+1%)
+tau>10Hz[Nm]         9.23e-05        0.000168 (+82%)
+tau_peak[%lim]           12.1             12.2 (+1%)
+power[W]               0.0164         0.0647 (+295%)
+CoT[-]                      -                      -
+duty[-]                     1                1 (+0%)
+duty_true[-]                1                1 (+0%)
+step_freq[Hz]               0                0 (d+0)
+step_freq_true[Hz]          0                0 (d+0)
+swing_h[cm]                 -                      -
+air_t[s]                    -                      -
+air_t_true[s]               -                      -
+diag_sync[%]                -                      -
+diag_sync_true[%]           -                      -
+air_cv[%]                   -                      -
+air_asym[%]                 -                      -
+loop_p99[ms]                5            5.64 (+13%)
+infer_p99[ms]           0.503           8.43 (d+7.9)
+
+--- profile seg 1: vx +0.00 vy +0.00 wz +0.60 (3.5 s) ---
+metric              A genesis            B mujoco
+vx_meas                0.0109  -0.00209 (d-0.013)
+vy_meas               0.00418    0.014 (d+0.0098)
+wz_meas                 0.469     0.541 (d+0.073)
+lin_err[m/s]           0.0238        0.0239 (+1%)
+yaw_err[rad/s]          0.131       0.0601 (-54%)
+vx_odo                  0.015  -0.00019 (d-0.015)
+lin_err_odo[m/s]       0.0258       0.0192 (-26%)
+z[m]                    0.308     0.309 (d+0.001)
+z_est[m]                0.308    0.309 (d+0.0012)
+pitch[deg]              0.492      0.309 (d-0.18)
+tilt_max[deg]             1.4          1.46 (+5%)
+act_rate[rad/s]          1.64          1.77 (+8%)
+act_acc[rad/s2]          52.3          53.6 (+2%)
+hf>10Hz[%]              0.761        0.656 (-14%)
+tau_rms[Nm]              4.26          4.16 (-2%)
+tau>10Hz[Nm]            0.371         0.344 (-7%)
+tau_peak[%lim]           45.7          43.2 (-6%)
+power[W]                 13.7         15.5 (+14%)
+CoT[-]                      -                   -
+duty[-]                 0.823         0.769 (-7%)
+duty_true[-]            0.825         0.798 (-3%)
+step_freq[Hz]               1         1.14 (+14%)
+step_freq_true[Hz]          1         1.14 (+14%)
+swing_h[cm]              4.97         5.62 (+13%)
+air_t[s]                0.191        0.224 (+17%)
+air_t_true[s]           0.187         0.197 (+5%)
+diag_sync[%]             83.9          84.3 (+1%)
+diag_sync_true[%]        83.1          84.3 (+2%)
+air_cv[%]                6.35         2.37 (-63%)
+air_asym[%]                11          9.95 (-9%)
+loop_p99[ms]                5          5.38 (+8%)
+infer_p99[ms]            13.1         7.81 (-40%)
+
+--- profile seg 3: vx +0.00 vy +0.00 wz -0.60 (3.5 s) ---
+metric              A genesis             B mujoco
+vx_meas                0.0106  -9.88e-05 (d-0.011)
+vy_meas              -0.00679   -0.0141 (d-0.0073)
+wz_meas                -0.468     -0.539 (d-0.071)
+lin_err[m/s]           0.0249         0.0251 (+1%)
+yaw_err[rad/s]          0.132        0.0626 (-53%)
+vx_odo                 0.0193    0.00311 (d-0.016)
+lin_err_odo[m/s]       0.0319        0.0225 (-29%)
+z[m]                    0.309    0.309 (d+0.00078)
+z_est[m]                0.308     0.309 (d+0.0012)
+pitch[deg]              0.551       0.426 (d-0.12)
+tilt_max[deg]            1.56           1.69 (+8%)
+act_rate[rad/s]          1.71            1.8 (+5%)
+act_acc[rad/s2]          55.9           55.7 (-0%)
+hf>10Hz[%]              0.814         0.704 (-14%)
+tau_rms[Nm]              4.26           4.16 (-2%)
+tau>10Hz[Nm]            0.379           0.37 (-2%)
+tau_peak[%lim]           44.5           42.4 (-5%)
+power[W]                   14          15.6 (+12%)
+CoT[-]                      -                    -
+duty[-]                 0.816          0.772 (-5%)
+duty_true[-]            0.806          0.795 (-1%)
+step_freq[Hz]               1          1.14 (+14%)
+step_freq_true[Hz]          1          1.14 (+14%)
+swing_h[cm]              4.93          5.58 (+13%)
+air_t[s]                0.183          0.22 (+20%)
+air_t_true[s]           0.188          0.199 (+6%)
+diag_sync[%]             89.3           84.5 (-5%)
+diag_sync_true[%]        83.6           83.6 (-0%)
+air_cv[%]                3.93           3.97 (+1%)
+air_asym[%]              21.8          15.7 (-28%)
+loop_p99[ms]                5          5.58 (+12%)
+infer_p99[ms]            10.5           10.8 (+3%)
+
+=== H3 gate (meant for unitree_mujoco runs through the deploy script) ===
+A genesis  PASS
+B mujoco   PASS
+plot: out/p2_final/go2-p25-w1.5e-3/plots_yaw/overview_A_genesis_go2-p25-w1.5e-3_yaw.png
+plot: out/p2_final/go2-p25-w1.5e-3/plots_yaw/overview_B_mujoco_20261106_093257_suite_yaw_mu1_0.png
+plot: out/p2_final/go2-p25-w1.5e-3/plots_yaw/overlay.png
+csv: out/p2_final/go2-p25-w1.5e-3/metrics_genesis_go2-p25-w1.5e-3_yaw.csv  (python go2_compare.py <genesis metrics csv> out/p2_final/go2-p25-w1.5e-3/metrics_genesis_go2-p25-w1.5e-3_yaw.csv)
+csv: out/p2_final/go2-p25-w1.5e-3/metrics_mujoco_20261106_093257_suite_yaw_mu1_0.csv  (python go2_compare.py <genesis metrics csv> out/p2_final/go2-p25-w1.5e-3/metrics_mujoco_20261106_093257_suite_yaw_mu1_0.csv)

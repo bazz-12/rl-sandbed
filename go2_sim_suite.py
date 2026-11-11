@@ -27,7 +27,10 @@ Each case runs --repeat times (default 2: unitree_mujoco over DDS is not determi
     trip:TEXT   a safety trip whose message contains TEXT ended the run in damping
     event:TEXT  an event containing TEXT happened (e.g. "L1+Y")
 Writes out/suite_<date>/summary.md and summary.csv; the logs stay in --log-dir (logs/deploy).
-Run it alone on the machine: the simulator and the deploy loop must both keep real time.
+[P2] The summary also has a gait column: swing time air_t [s] / diagonal sync [%] of each moving profile segment
+(go2_analyze.gait_pattern), so a stress case that breaks the trot shows even when the run passes.
+Run it alone on the machine: the simulator and the deploy loop must both keep real time. [P3v2] A second battery
+started meanwhile stops at once (a lock in the temp folder, released when the first one ends).
 """
 
 import argparse
@@ -35,6 +38,7 @@ import csv
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 
@@ -143,6 +147,9 @@ def summarize(result):
             out.setdefault("tracking", []).append(f"{key} {m.get(key + '_meas', float('nan')):+.2f}/{w.cmd[0 if key == 'vx' else 1]:+.2f}")
         elif w.cmd is not None and abs(w.cmd[2]) >= 0.1 and m:
             out.setdefault("tracking", []).append(f"wz {m.get('wz_meas', float('nan')):+.2f}/{w.cmd[2]:+.2f}")
+        if w.cmd is not None and np.linalg.norm(w.cmd[:3]) >= 0.1 and m:  # [P2] swing time / diagonal sync per segment
+            out.setdefault("gait", []).append(f"{m.get('air_t[s]', float('nan')):.2f}/"
+                                              f"{m.get('diag_sync[%]', float('nan')):.0f}")
     ms = [m for m in result["metrics"].values() if m]
     out["tilt_max"] = max((m.get("tilt_max[deg]", 0.0) for m in ms), default=float("nan"))
     out["tau_peak"] = max((m.get("tau_peak[%lim]", 0.0) for m in ms), default=float("nan"))
@@ -220,6 +227,24 @@ def run_case(case, rep, args, py, logf):
     return res
 
 
+def one_batch_at_a_time():
+    """[P3v2] An exclusive lock for the whole battery (P2: two MuJoCo batches in parallel saturate the CPU, the
+    simulator and the 2 ms loop fall behind real time, and the results are invalid). The kernel releases the lock when
+    the process ends, also after a crash; returns the open lock file, None where fcntl does not exist."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    path = os.path.join(tempfile.gettempdir(), "go2_sim_suite.lock")
+    f = open(path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit(f"another go2_sim_suite.py battery is running ({path} is locked): run one MuJoCo batch at a "
+                         f"time, or results become invalid (the 2 ms loop falls behind real time)")
+    return f
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--policy", default=None, help="exported policy folder (go2_export.py); not needed with --list")
@@ -251,6 +276,7 @@ def main():
         return
     if args.policy is None or args.um is None:
         p.error("--policy and --um are required to run cases")
+    args.lock = one_batch_at_a_time()  # [P3v2] held until this process ends
     args.policy = os.path.abspath(args.policy)
     args.um = os.path.abspath(os.path.expanduser(args.um))
     if args.scene is None:
@@ -281,6 +307,7 @@ def main():
                 rows.append({"case": c.name, "suite": c.suite, "run": rep + 1, "expect": c.expect,
                              "result": "ok" if ok else "NOT OK", "why": why,
                              "tracking": " ".join(info.get("tracking", [])),
+                             "gait_air_t_s/diag_sync_pct": " ".join(info.get("gait", [])),  # [P2]
                              "tilt_max_deg": f"{info.get('tilt_max', float('nan')):.0f}",
                              "tau_peak_pct": f"{info.get('tau_peak', float('nan')):.0f}",
                              "loop_p99_ms": f"{info.get('loop_p99', float('nan')):.1f}",
@@ -297,13 +324,15 @@ def main():
     with open(os.path.join(args.out, "summary.md"), "w") as f:
         f.write(f"# Simulation suite, {time.strftime('%Y-%m-%d %H:%M')}\n\npolicy `{args.policy}`, scene "
                 f"`{os.path.basename(args.scene)}`, physics {1000 * args.dt:g} ms, {args.repeat} runs per case. "
-                "Tracking = measured / commanded velocity per profile segment; loop and state age while the robot is "
+                "Tracking = measured / commanded velocity per profile segment; gait = air_t [s] / diag_sync [%] per "
+                "moving segment (go2_analyze.py, estimated contacts); loop and state age while the robot is "
                 "driven (damping left out)\n\n")
-        f.write("| case | run | expect | result | why | tracking (measured/command) | tilt max [deg] | "
-                "torque peak [%] | loop p99 [ms] | state age max [ms] |\n|" + " --- |" * 10 + "\n")
+        f.write("| case | run | expect | result | why | tracking (measured/command) | gait (air_t/diag_sync) | "
+                "tilt max [deg] | torque peak [%] | loop p99 [ms] | state age max [ms] |\n|" + " --- |" * 11 + "\n")
         for r in rows:
             f.write(f"| {r['case']} | {r['run']} | {r['expect']} | {r['result']} | {r['why']} | {r['tracking']} | "
-                    f"{r['tilt_max_deg']} | {r['tau_peak_pct']} | {r['loop_p99_ms']} | {r['state_age_max_ms']} |\n")
+                    f"{r['gait_air_t_s/diag_sync_pct']} | {r['tilt_max_deg']} | {r['tau_peak_pct']} | "
+                    f"{r['loop_p99_ms']} | {r['state_age_max_ms']} |\n")
     bad = [r for r in rows if r["result"] != "ok"]
     print(f"\n{len(rows) - len(bad)}/{len(rows)} runs as expected. Summary: {os.path.join(args.out, 'summary.md')}")
     return 1 if bad else 0

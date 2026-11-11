@@ -58,14 +58,10 @@ run() {  # run "<label>" -e <exp> [more go2_train.py flags]
 }
 
 # Queue (edit here)
-run "Baseline"                      -e go2-p16
-run "[1/7] height command"          -e go2-p16h    --height-cmd
-run "[2/7] LSTM"                    -e go2-p16r    --rnn lstm
-run "[3/7] GRU"                     -e go2-p16g    --rnn gru
-run "[4/7] height + LSTM"           -e go2-p16hr   --height-cmd --rnn lstm
-run "[5/7] LSTM hidden 128"         -e go2-p16r128 --rnn lstm --rnn-hidden 128
-run "[6/7] LSTM, 96 steps per env"  -e go2-p16r96  --rnn lstm --steps-per-env 96
-run "[7/7] height + LSTM, 1500 its" -e go2-p16hr15 --height-cmd --rnn lstm --max-iterations 1500
+run "Baseline"                      -e go2-p18
+run "Baseline seed 2"               -e go2-p18bis  --seed 2
+run "[1/7] height command"          -e go2-p18h    --height-cmd
+
 
 echo "Finished $(date '+%F %T') | $n_ok OK, $n_fail failed" >> "$SUMMARY"
 echo

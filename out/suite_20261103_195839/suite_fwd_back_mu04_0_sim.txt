@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/rbuche/projects/sandbed/go2_mujoco_headless.py", line 677, in <module>
+    main()
+  File "/home/rbuche/projects/sandbed/go2_mujoco_headless.py", line 443, in main
+    from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+ModuleNotFoundError: No module named 'unitree_sdk2py'

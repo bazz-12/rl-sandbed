@@ -1,0 +1,204 @@
+=== P2 overnight batch, started 2026-11-05 18:53:05 ===
+OK       train go2-p25-s2                                           60 min
+OK       train go2-p23-s2                                           59 min
+OK       metrics go2-p23-s2                                          0 min
+OK       metrics go2-p25-s2                                          0 min
+OK       metrics go2-p21-c0.45                                       0 min
+OK       metrics go2-p23                                             0 min
+OK       metrics go2-p25-w1.5e-3                                     0 min
+OK       metrics go2-p21-c0.45 --keep_dr                             1 min
+OK       metrics go2-p25-w1.5e-3 --keep_dr                           0 min
+OK       metrics go2-p25-s2 --keep_dr                                0 min
+OK       compare nominal                                             0 min
+OK       compare training DR                                         0 min
+OK       export go2-p25-w1.5e-3                                      0 min
+OK       export go2-p23                                              0 min
+OK       test_go2_deploy go2-p25-w1.5e-3                             0 min
+OK       fsm_sim full                                                0 min
+OK       fsm_sim 16 robots DR                                        0 min
+OK       fsm_sim estop                                               0 min
+OK       bench go2-p23 slow                                          0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       bench go2-p23 yaw                                           0 min
+FAIL 1   unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p23 slow
+FAIL     no unitree_mujoco log for go2-p23 fwd_back
+FAIL     no unitree_mujoco log for go2-p23 lateral
+FAIL     no unitree_mujoco log for go2-p23 yaw
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 slow
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 fwd_back
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 lateral
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 yaw
+FAIL 1   energy in mujoco slow                                       0 min
+FAIL 1   energy in bench slow                                        0 min
+FAIL 1   energy in mujoco fwd_back                                   0 min
+FAIL 1   energy in bench fwd_back                                    0 min
+FAIL 1   energy in mujoco lateral                                    0 min
+FAIL 1   energy in bench lateral                                     0 min
+FAIL 1   energy in mujoco yaw                                        0 min
+FAIL 1   energy in bench yaw                                         0 min
+FAIL 1   suite gate                                                  0 min
+FAIL 1   suite stress                                                0 min
+=== finished 2026-11-05 21:01:52 ===
+=== P2 overnight batch, started 2026-11-05 21:29:42 ===
+OK       metrics go2-p23-s2                                          0 min
+OK       metrics go2-p25-s2                                          0 min
+OK       metrics go2-p21-c0.45                                       0 min
+OK       metrics go2-p23                                             0 min
+OK       metrics go2-p25-w1.5e-3                                     0 min
+OK       metrics go2-p21-c0.45 --keep_dr                             0 min
+OK       metrics go2-p25-w1.5e-3 --keep_dr                           0 min
+OK       metrics go2-p25-s2 --keep_dr                                0 min
+OK       compare nominal                                             0 min
+OK       compare training DR                                         0 min
+OK       test_go2_deploy go2-p25-w1.5e-3                             0 min
+OK       fsm_sim full                                                0 min
+OK       fsm_sim 16 robots DR                                        0 min
+OK       fsm_sim estop                                               0 min
+OK       bench go2-p23 slow                                          0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       bench go2-p23 yaw                                           0 min
+FAIL 1   unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p23 slow
+FAIL     no unitree_mujoco log for go2-p23 fwd_back
+FAIL     no unitree_mujoco log for go2-p23 lateral
+FAIL     no unitree_mujoco log for go2-p23 yaw
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     0 min
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 slow
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 fwd_back
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 lateral
+FAIL     no unitree_mujoco log for go2-p25-w1.5e-3 yaw
+FAIL 1   energy in mujoco slow                                       0 min
+FAIL 1   energy in bench slow                                        0 min
+FAIL 1   energy in mujoco fwd_back                                   0 min
+FAIL 1   energy in bench fwd_back                                    0 min
+FAIL 1   energy in mujoco lateral                                    0 min
+FAIL 1   energy in bench lateral                                     0 min
+FAIL 1   energy in mujoco yaw                                        0 min
+FAIL 1   energy in bench yaw                                         0 min
+FAIL 1   suite gate                                                  0 min
+FAIL 1   suite stress                                                0 min
+=== finished 2026-11-05 21:33:52 ===
+=== P2 batch, started 2026-11-06 09:01:30, stages: bench mujoco suites ===
+OK       bench go2-p23 slow                                          0 min
+OK       analyze bench go2-p23 slow                                  0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       analyze bench go2-p23 fwd_back                              0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       analyze bench go2-p23 lateral                               0 min
+OK       bench go2-p23 yaw                                           0 min
+OK       analyze bench go2-p23 yaw                                   0 min
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       analyze bench go2-p25-w1.5e-3 slow                          0 min
+=== P2 batch, started 2026-11-06 09:04:30, stages: bench mujoco suites ===
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       analyze bench go2-p25-w1.5e-3 fwd_back                      0 min
+OK       bench go2-p23 slow                                          0 min
+OK       analyze bench go2-p23 slow                                  0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       analyze bench go2-p25-w1.5e-3 lateral                       0 min
+OK       bench go2-p23 fwd_back                                      0 min
+OK       analyze bench go2-p23 fwd_back                              0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+OK       analyze bench go2-p25-w1.5e-3 yaw                           0 min
+OK       energy in bench slow                                        0 min
+OK       energy in bench fwd_back                                    0 min
+OK       energy in bench lateral                                     0 min
+OK       energy in bench yaw                                         0 min
+OK       bench go2-p23 lateral                                       0 min
+OK       analyze bench go2-p23 lateral                               0 min
+OK       bench go2-p23 yaw                                           0 min
+OK       analyze bench go2-p23 yaw                                   0 min
+OK       bench go2-p25-w1.5e-3 slow                                  0 min
+OK       analyze bench go2-p25-w1.5e-3 slow                          0 min
+OK       unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     2 min
+OK       analyze bench vs mujoco go2-p23 slow                        0 min
+OK       compare bench vs mujoco go2-p23 slow                        0 min
+OK       analyze bench vs mujoco go2-p23 fwd_back                    0 min
+OK       compare bench vs mujoco go2-p23 fwd_back                    0 min
+OK       analyze bench vs mujoco go2-p23 lateral                     0 min
+OK       compare bench vs mujoco go2-p23 lateral                     0 min
+OK       analyze bench vs mujoco go2-p23 yaw                         0 min
+OK       compare bench vs mujoco go2-p23 yaw                         0 min
+OK       bench go2-p25-w1.5e-3 fwd_back                              0 min
+OK       analyze bench go2-p25-w1.5e-3 fwd_back                      0 min
+OK       bench go2-p25-w1.5e-3 lateral                               0 min
+OK       analyze bench go2-p25-w1.5e-3 lateral                       0 min
+OK       bench go2-p25-w1.5e-3 yaw                                   0 min
+OK       analyze bench go2-p25-w1.5e-3 yaw                           0 min
+OK       energy in bench slow                                        0 min
+OK       energy in bench fwd_back                                    0 min
+OK       energy in bench lateral                                     0 min
+OK       energy in bench yaw                                         0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     3 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+FAIL 1   analyze bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+FAIL 1   compare bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       energy in mujoco slow                                       0 min
+OK       energy in mujoco fwd_back                                   0 min
+FAIL 1   energy in mujoco lateral                                    0 min
+OK       energy in mujoco yaw                                        0 min
+FAIL 1   unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     3 min
+OK       analyze bench vs mujoco go2-p23 slow                        0 min
+OK       compare bench vs mujoco go2-p23 slow                        0 min
+OK       analyze bench vs mujoco go2-p23 fwd_back                    0 min
+OK       compare bench vs mujoco go2-p23 fwd_back                    0 min
+OK       analyze bench vs mujoco go2-p23 lateral                     0 min
+OK       compare bench vs mujoco go2-p23 lateral                     0 min
+OK       analyze bench vs mujoco go2-p23 yaw                         0 min
+FAIL 1   compare bench vs mujoco go2-p23 yaw                         0 min
+FAIL 1   unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     3 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+FAIL 1   compare bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       energy in mujoco slow                                       0 min
+FAIL 1   energy in mujoco fwd_back                                   0 min
+OK       energy in mujoco lateral                                    0 min
+FAIL 1   energy in mujoco yaw                                        0 min
+=== P2 batch, started 2026-11-06 09:28:20, stages: mujoco suites ===
+OK       unitree_mujoco go2-p23 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     2 min
+OK       analyze bench vs mujoco go2-p23 slow                        0 min
+OK       compare bench vs mujoco go2-p23 slow                        0 min
+OK       analyze bench vs mujoco go2-p23 fwd_back                    0 min
+OK       compare bench vs mujoco go2-p23 fwd_back                    0 min
+OK       analyze bench vs mujoco go2-p23 lateral                     0 min
+OK       compare bench vs mujoco go2-p23 lateral                     0 min
+OK       analyze bench vs mujoco go2-p23 yaw                         0 min
+OK       compare bench vs mujoco go2-p23 yaw                         0 min
+OK       unitree_mujoco go2-p25-w1.5e-3 (slow_mu1,fwd_back_mu1,lateral_mu1,yaw_mu1)     2 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 slow                0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 fwd_back            0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 lateral             0 min
+OK       analyze bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       compare bench vs mujoco go2-p25-w1.5e-3 yaw                 0 min
+OK       energy in mujoco slow                                       0 min
+OK       energy in mujoco fwd_back                                   0 min
+OK       energy in mujoco lateral                                    0 min
+OK       energy in mujoco yaw                                        0 min
+OK       suite gate                                                 15 min
+OK       suite stress                                               18 min
+=== finished 2026-11-06 10:08:12 ===

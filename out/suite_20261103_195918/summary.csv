@@ -1,0 +1,21 @@
+case,suite,run,expect,result,why,tracking,tilt_max_deg,tau_peak_pct,loop_p99_ms,state_age_max_ms,log
+stand60_mu1,gate,1,pass,ok,PASS,,2,13,2.1,17,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_195920_suite_stand60_mu1_0.npz
+stand60_mu1,gate,2,pass,ok,PASS,,2,13,2.1,13,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200042_suite_stand60_mu1_1.npz
+slow_mu1,gate,1,pass,ok,PASS,vx +0.18/+0.25 vx -0.19/-0.25,3,29,2.1,13,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200203_suite_slow_mu1_0.npz
+slow_mu1,gate,2,pass,ok,PASS,vx +0.18/+0.25 vx -0.19/-0.25,3,28,2.2,14,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200242_suite_slow_mu1_1.npz
+fwd_back_mu1,gate,1,pass,ok,PASS,vx +0.45/+0.50 vx -0.50/-0.50,2,33,2.1,12,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200322_suite_fwd_back_mu1_0.npz
+fwd_back_mu1,gate,2,pass,ok,PASS,vx +0.45/+0.50 vx -0.50/-0.50,2,33,2.2,12,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200400_suite_fwd_back_mu1_1.npz
+lateral_mu1,gate,1,pass,ok,PASS,vy +0.23/+0.30 vy -0.23/-0.30,3,39,2.1,11,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200437_suite_lateral_mu1_0.npz
+lateral_mu1,gate,2,pass,ok,PASS,vy +0.23/+0.30 vy -0.23/-0.30,3,39,2.2,11,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200515_suite_lateral_mu1_1.npz
+yaw_mu1,gate,1,pass,ok,PASS,wz +0.60/+0.60 wz -0.51/-0.60,3,52,2.1,17,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200553_suite_yaw_mu1_0.npz
+yaw_mu1,gate,2,pass,ok,PASS,wz +0.60/+0.60 wz -0.51/-0.60,2,53,2.1,13,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200630_suite_yaw_mu1_1.npz
+stand60_mu04,gate,1,safe,ok,safe,,2,12,2.2,9,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200708_suite_stand60_mu04_0.npz
+stand60_mu04,gate,2,safe,ok,safe,,2,12,2.1,13,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200830_suite_stand60_mu04_1.npz
+slow_mu04,gate,1,safe,ok,safe,vx +0.20/+0.25 vx -0.20/-0.25,3,28,2.1,8,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_200951_suite_slow_mu04_0.npz
+slow_mu04,gate,2,safe,ok,safe,vx +0.20/+0.25 vx -0.19/-0.25,3,28,2.2,14,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201031_suite_slow_mu04_1.npz
+fwd_back_mu04,gate,1,safe,ok,safe,vx +0.46/+0.50 vx -0.50/-0.50,2,34,2.1,13,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201111_suite_fwd_back_mu04_0.npz
+fwd_back_mu04,gate,2,safe,ok,safe,vx +0.46/+0.50 vx -0.50/-0.50,2,34,2.1,14,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201148_suite_fwd_back_mu04_1.npz
+lateral_mu04,gate,1,safe,ok,safe,vy +0.24/+0.30 vy -0.24/-0.30,3,39,2.3,12,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201226_suite_lateral_mu04_0.npz
+lateral_mu04,gate,2,safe,ok,safe,vy +0.24/+0.30 vy -0.24/-0.30,3,39,2.1,10,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201303_suite_lateral_mu04_1.npz
+yaw_mu04,gate,1,safe,ok,safe,wz +0.63/+0.60 wz -0.53/-0.60,3,45,2.1,14,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201340_suite_yaw_mu04_0.npz
+yaw_mu04,gate,2,safe,ok,safe,wz +0.63/+0.60 wz -0.53/-0.60,3,42,2.2,8,/home/rbuche/projects/sandbed/logs/deploy/mujoco_20261103_201418_suite_yaw_mu04_1.npz
